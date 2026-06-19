@@ -1,0 +1,30 @@
+name: Deploy backend to Oracle VM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/clickpass
+            git fetch origin main
+            git checkout -f -B main origin/main
+            docker build -f apps/backend/Dockerfile -t clickpass-backend:latest .
+            sudo systemctl restart clickpass-backend
+            sudo systemctl status clickpass-backend --no-pager

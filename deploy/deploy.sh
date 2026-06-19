@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Ejecutar en la VM, dentro de /opt/clickpass (clon del repo).
+# Ejecutar en la VM, dentro de /home/ubuntu/clickpass (clon del repo).
 # Requiere: git, docker, .env en apps/backend/.env (no se versiona).
+# El deploy automático real corre vía .github/workflows/deploy-backend.yml (SSH);
+# este script es para correrlo a mano si hace falta.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
