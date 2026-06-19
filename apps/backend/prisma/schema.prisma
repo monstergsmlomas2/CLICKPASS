@@ -1,0 +1,369 @@
+// Clickpass — monolito modular. Cada dominio vive en su propio schema de Postgres.
+// Fase 1: solo el schema "auth". Los demás (event, ticket, payment, refund, notification)
+// se agregan en sus fases, sin tocar este.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Supabase: url = pooler (6543) para runtime; directUrl = directo (5432) para migraciones.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  // Nota: en Supabase el schema "auth" está reservado por su Auth interno,
+  // por eso prefijamos todos los dominios con "clickpass_".
+  schemas   = ["clickpass_auth", "clickpass_event", "clickpass_ticket", "clickpass_payment", "clickpass_refund", "clickpass_payout", "clickpass_notification"]
+}
+
+// ===== Schema: auth =====
+enum Role {
+  ADMIN
+  ORGANIZER
+  USER
+
+  @@schema("clickpass_auth")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           Role     @default(USER)
+  organizationId String?
+  phone          String?
+  createdAt      DateTime @default(now())
+
+  refreshTokens RefreshToken[]
+  passwordReset PasswordReset?
+
+  @@schema("clickpass_auth")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique // hash SHA256 del refresh token, nunca el token en claro
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@schema("clickpass_auth")
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  @@schema("clickpass_auth")
+}
+
+// ===== Schema: event =====
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+
+  @@schema("clickpass_event")
+}
+
+enum RefundPolicy {
+  STANDARD // 48h garantizado ante cancelación
+  NO_REFUND // El organizador no acepta reembolsos voluntarios
+  FLEXIBLE // Reembolso voluntario hasta 24h antes del evento
+
+  @@schema("clickpass_event")
+}
+
+enum DateStatus {
+  ACTIVE
+  SOLD_OUT
+  CANCELLED
+
+  @@schema("clickpass_event")
+}
+
+model Event {
+  id           String      @id @default(cuid())
+  title        String
+  description  String?
+  category     String
+  bannerUrl    String?
+  organizerId  String // ID externo (dominio auth), sin FK cruzando schemas
+  status       EventStatus @default(DRAFT)
+  createdAt    DateTime    @default(now())
+  publishedAt  DateTime?
+  venueName    String?
+  venueAddress String?
+  city         String?
+  country      String?
+  latitude     Float?
+  longitude    Float?
+  refundPolicy RefundPolicy @default(STANDARD)
+  source       String? // null = nativo; "PASSLINE_IMPORT" si vino de migración
+
+  dates EventDate[]
+
+  @@index([organizerId])
+  @@index([status])
+  @@schema("clickpass_event")
+}
+
+model EventDate {
+  id          String     @id @default(cuid())
+  eventId     String
+  event       Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  capacity    Int
+  ticketsSold Int        @default(0) // desnormalizado para lectura rápida
+  price       Decimal    @db.Decimal(12, 2) // dinero en Decimal, nunca Float
+  currency    String     @default("ARS")
+  status      DateStatus @default(ACTIVE)
+  version     Int        @default(0) // Optimistic Concurrency Control
+
+  @@index([eventId])
+  @@schema("clickpass_event")
+}
+
+// ===== Schema: ticket =====
+enum TicketStatus {
+  RESERVED
+  CONFIRMED
+  USED
+  REFUNDED
+
+  @@schema("clickpass_ticket")
+}
+
+model Ticket {
+  id            String       @id @default(cuid())
+  eventDateId   String // ID externo (dominio event), sin FK cruzando schemas
+  userId        String? // comprador con cuenta (ID externo, dominio auth); null si compró como invitado
+  purchaseId    String? // referencia al pago (se completa en Fase 3)
+  qrCode        String       @unique // hash SHA256(ticketId + salt)
+  status        TicketStatus @default(RESERVED)
+  reservedAt    DateTime     @default(now())
+  confirmedAt   DateTime?
+  usedAt        DateTime?
+  price         Decimal      @db.Decimal(12, 2)
+  currency      String       @default("ARS")
+  attendeeName  String? // nombre del comprador invitado (sin cuenta)
+  attendeeEmail String? // email del comprador invitado (sin cuenta); destino del QR
+  attendeePhone String?
+  checkedInBy   String?
+
+  @@index([eventDateId])
+  @@index([userId])
+  @@index([attendeeEmail])
+  @@schema("clickpass_ticket")
+}
+
+model ReservationLock {
+  id             String   @id @default(cuid())
+  eventDateId    String
+  userId         String? // null si la reserva es de un comprador invitado
+  guestEmail     String? // identifica la reserva cuando no hay userId
+  quantity       Int
+  expiresAt      DateTime // TTL 5 min
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([eventDateId])
+  @@schema("clickpass_ticket")
+}
+
+model IdempotencyRecord {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  status    String // PENDING, COMPLETED, FAILED
+  response  Json?
+  createdAt DateTime @default(now())
+  expiresAt DateTime // TTL 24h
+
+  @@schema("clickpass_ticket")
+}
+
+// ===== Schema: payment (MercadoPago — Checkout Pro, ARS, sin split por ahora) =====
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+
+  @@schema("clickpass_payment")
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  // Identificadores de MercadoPago (antes Stripe). preferenceId = Checkout Pro;
+  // mpPaymentId = id del pago aprobado que llega por webhook.
+  mpPreferenceId String?       @unique
+  mpPaymentId    String?       @unique
+  userId         String? // comprador con cuenta (ID externo); null si compró como invitado
+  guestEmail     String? // contacto del comprador invitado (sin cuenta)
+  guestName      String?
+  guestPhone     String?
+  eventDateId    String // ID externo (dominio event)
+  reservationKey String // idempotencyKey de la reserva, para vincular los tickets RESERVED
+  amount         Decimal       @db.Decimal(12, 2) // dinero en Decimal, nunca Float
+  currency       String        @default("ARS")
+  status         PaymentStatus @default(PENDING)
+  ticketsCount   Int
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  completedAt    DateTime?
+
+  @@index([userId])
+  @@index([eventDateId])
+  @@schema("clickpass_payment")
+}
+
+// ===== Schema: refund =====
+enum RefundStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+
+  @@schema("clickpass_refund")
+}
+
+model Refund {
+  id            String       @id @default(cuid())
+  paymentId     String // ID externo (dominio payment)
+  userId        String? // ID externo (dominio auth); null si el pago fue de un invitado
+  guestEmail    String? // contacto del comprador invitado, para notificar el reembolso
+  eventId       String // ID externo (dominio event)
+  mpRefundId    String?      @unique // id del reembolso en MercadoPago
+  amount        Decimal      @db.Decimal(12, 2)
+  currency      String       @default("ARS")
+  reason        String? // EVENT_CANCELLED, USER_REQUEST, DUPLICATE
+  status        RefundStatus @default(PROCESSING)
+  attempts      Int          @default(0)
+  failureReason String?
+  // Garantía 48h hábiles desde la solicitud del organizador.
+  requestedAt   DateTime     @default(now())
+  slaDueAt      DateTime
+  bonusApplied  Boolean      @default(false)
+  bonusAmount   Decimal?     @db.Decimal(12, 2)
+  bonusReason   String? // null si no aplica; "SLA_BREACH_CLICKPASS"
+  createdAt     DateTime     @default(now())
+  completedAt   DateTime?
+
+  @@index([userId])
+  @@index([paymentId])
+  @@index([eventId])
+  @@schema("clickpass_refund")
+}
+
+model RefundAudit {
+  id          String    @id @default(cuid())
+  refundId    String
+  eventId     String
+  userId      String?
+  amount      Decimal   @db.Decimal(12, 2)
+  status      String
+  processedAt DateTime  @default(now())
+  completedAt DateTime?
+  notifiedAt  DateTime?
+
+  @@schema("clickpass_refund")
+}
+
+// ===== Schema: payout (liquidación al organizador, post-evento) =====
+// Clickpass retiene el dinero hasta que el evento se realiza y pasa la ventana de
+// contracargos (eligibleAt = endDate + ORGANIZER_PAYOUT_DELAY_DAYS). Recién ahí se
+// transfiere al organizador el precio base menos la comisión. Si el evento se cancela,
+// el payout pasa a CANCELLED y el dinero retenido financia los reembolsos.
+enum PayoutStatus {
+  SCHEDULED // creado; esperando eligibleAt (evento realizado + X días)
+  PROCESSING // ejecutándose la transferencia
+  PAID // transferido al organizador
+  CANCELLED // evento cancelado → no se paga
+  FAILED // la transferencia falló tras los reintentos
+
+  @@schema("clickpass_payout")
+}
+
+model Payout {
+  id          String @id @default(cuid())
+  organizerId String // ID externo (dominio auth)
+  eventId     String // ID externo (dominio event)
+  eventDateId String @unique // un payout por función del evento
+  // grossAmount = suma de precios BASE de los tickets confirmados (sin el 15% del comprador,
+  // que es ingreso de Clickpass). commissionAmount = grossAmount * commissionRate.
+  grossAmount      Decimal      @db.Decimal(12, 2)
+  commissionRate   Decimal      @db.Decimal(5, 4) // 0.0000 (primer mes) o 0.0500
+  commissionAmount Decimal      @db.Decimal(12, 2)
+  netAmount        Decimal      @db.Decimal(12, 2) // lo que recibe el organizador
+  currency         String       @default("ARS")
+  ticketsCount     Int
+  status           PayoutStatus @default(SCHEDULED)
+  eligibleAt       DateTime // endDate del evento + ORGANIZER_PAYOUT_DELAY_DAYS
+  attempts         Int          @default(0)
+  failureReason    String?
+  mpTransferId     String?      @unique // id de la transferencia en la pasarela
+  createdAt        DateTime     @default(now())
+  paidAt           DateTime?
+  cancelledAt      DateTime?
+
+  @@index([organizerId])
+  @@index([eventId])
+  @@index([status])
+  @@schema("clickpass_payout")
+}
+
+// Multa por cancelación del organizador: compensa a Clickpass por la comisión que no
+// llegó a cobrar (5%) y por el cargo de servicio (15%) que tuvo que devolverle al
+// comprador. Se cobra descontándola del próximo payout elegible de ese organizador
+// (no requiere medio de pago en garantía).
+enum PenaltyStatus {
+  PENDING
+  SETTLED
+
+  @@schema("clickpass_payout")
+}
+
+model OrganizerPenalty {
+  id          String        @id @default(cuid())
+  organizerId String // ID externo (dominio auth)
+  eventId     String // ID externo (dominio event)
+  reason      String        @default("EVENT_CANCELLATION")
+  amount      Decimal       @db.Decimal(12, 2) // saldo pendiente; baja a medida que se descuenta de payouts
+  currency    String        @default("ARS")
+  status      PenaltyStatus @default(PENDING)
+  settledAt   DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([organizerId])
+  @@index([status])
+  @@schema("clickpass_payout")
+}
+
+// ===== Schema: notification =====
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String? // null si el destinatario es un comprador invitado (ver recipientEmail)
+  recipientEmail String? // email directo cuando no hay userId
+  type      String // EMAIL, SMS, PUSH
+  channel   String // TICKET_CONFIRMED, REFUND_STARTED, REFUND_COMPLETED, EVENT_REMINDER
+  subject   String?
+  content   String
+  status    String    @default("PENDING") // PENDING, SENT, FAILED
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([userId])
+  @@schema("clickpass_notification")
+}

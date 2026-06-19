@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── SVG Grain (textura sutil) ── */
+:root {
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+/* ── Base ── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-night text-fg font-sans antialiased;
+    background-image: var(--grain);
+    background-attachment: fixed;
+  }
+  ::selection {
+    @apply bg-lime text-night;
+  }
+  /* Scrollbar personalizada */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-night;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-violet/40 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-violet/60;
+  }
+}
+
+/* ── Componentes ── */
+@layer components {
+  /* ── Glass card ── */
+  .glass {
+    @apply relative rounded-2xl;
+    background: rgba(20, 17, 31, 0.6);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(157, 78, 255, 0.22);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+  .glass::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+    pointer-events: none;
+  }
+  .glass-hover {
+    @apply glass transition-all duration-150;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .glass-hover:hover {
+    transform: translateY(-4px) scale(1.02);
+    border-color: rgba(16, 232, 156, 0.35);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(16, 232, 156, 0.1);
+  }
+
+  /* ── Botón neón lleno ── */
+  .btn-neon {
+    @apply relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-full
+           px-6 py-3 font-semibold text-night transition-all duration-150;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    background: linear-gradient(135deg, #9D4EFF, #10E89C);
+    box-shadow: 0 0 20px rgba(16, 232, 156, 0.35), 0 0 40px rgba(16, 232, 156, 0.1);
+  }
+  .btn-neon:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 0 30px rgba(16, 232, 156, 0.55), 0 0 60px rgba(16, 232, 156, 0.2);
+  }
+  .btn-neon:active {
+    transform: translateY(0) scale(0.98);
+  }
+  .btn-neon:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* ── Botón outline glow ── */
+  .btn-outline {
+    @apply relative inline-flex items-center justify-center gap-2 rounded-full border px-6 py-3
+           font-semibold transition-all duration-150;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    border-color: rgba(157, 78, 255, 0.35);
+    box-shadow: 0 0 15px rgba(157, 78, 255, 0.08);
+  }
+  .btn-outline:hover {
+    background: linear-gradient(135deg, rgba(157, 78, 255, 0.15), rgba(16, 232, 156, 0.15));
+    border-color: rgba(16, 232, 156, 0.5);
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 0 25px rgba(16, 232, 156, 0.2);
+  }
+
+  /* ── Input field dark ── */
+  .field {
+    @apply w-full rounded-xl border px-4 py-3 text-fg placeholder:text-muted/50
+           outline-none transition-all duration-150;
+    background: rgba(20, 17, 31, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-color: rgba(157, 78, 255, 0.22);
+  }
+  .field:focus {
+    border-color: #10E89C;
+    box-shadow: 0 0 15px rgba(16, 232, 156, 0.15), 0 0 30px rgba(16, 232, 156, 0.05);
+  }
+
+  /* ── Chip (etiqueta) ── */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-xs
+           uppercase tracking-widest;
+    border-color: rgba(157, 78, 255, 0.22);
+  }
+
+  /* ── Divider de puntos neón ── */
+  .divider {
+    @apply relative h-px w-full;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(157, 78, 255, 0.22) 0px,
+      rgba(157, 78, 255, 0.22) 8px,
+      transparent 8px,
+      transparent 16px
+    );
+  }
+
+  /* ── Gradient text ── */
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #9D4EFF, #10E89C);
+    background-size: 200% auto;
+  }
+
+  /* ── Glow utility ── */
+  .glow-lime {
+    box-shadow: 0 0 20px rgba(16, 232, 156, 0.35), 0 0 40px rgba(16, 232, 156, 0.1);
+  }
+  .glow-violet {
+    box-shadow: 0 0 20px rgba(157, 78, 255, 0.4), 0 0 40px rgba(157, 78, 255, 0.15);
+  }
+  .text-glow-lime {
+    text-shadow: 0 0 10px rgba(16, 232, 156, 0.5), 0 0 20px rgba(16, 232, 156, 0.2);
+  }
+  .text-glow-violet {
+    text-shadow: 0 0 10px rgba(157, 78, 255, 0.5), 0 0 20px rgba(157, 78, 255, 0.2);
+  }
+
+  /* ── Fondo mesh animado ── */
+  .mesh-bg {
+    @apply fixed inset-0 pointer-events-none overflow-hidden;
+    z-index: 0;
+  }
+  .mesh-blob-wrap {
+    @apply absolute will-change-transform;
+  }
+  .mesh-blob {
+    @apply absolute inset-0 rounded-full blur-[80px] opacity-80 will-change-transform;
+  }
+
+  /* ── Marquee ── */
+  .marquee {
+    @apply overflow-hidden;
+  }
+  .marquee-track {
+    @apply flex w-max animate-marquee;
+  }
+
+  /* ── Trust badge ── */
+  .trust-item {
+    @apply glass flex flex-col items-center gap-2 p-6 text-center;
+  }
+
+  /* ── Card con imagen real (eventos) ── */
+  .event-card-img {
+    @apply relative block aspect-[3/4] overflow-hidden rounded-2xl border transition-all duration-300;
+    border-color: rgba(157, 78, 255, 0.22);
+  }
+  .event-card-img:hover {
+    border-color: rgba(16, 232, 156, 0.5);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 30px rgba(16, 232, 156, 0.15);
+    transform: translateY(-4px);
+  }
+}
+
+/* ── prefers-reduced-motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .mesh-blob {
+    animation: none !important;
+  }
+  .marquee-track {
+    animation: none !important;
+  }
+  .glass-hover:hover {
+    transform: none !important;
+  }
+  .btn-neon:hover,
+  .btn-outline:hover {
+    transform: none !important;
+  }
+  [class*="animate-"] {
+    animation: none !important;
+  }
+}

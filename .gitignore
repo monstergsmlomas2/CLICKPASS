@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.next/
+coverage/
+.turbo/
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Prisma
+apps/backend/prisma/migrations/dev.db
+
+# TS build cache
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+.vercel

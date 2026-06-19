@@ -1,0 +1,21 @@
+# Instalar en la VM: sudo cp deploy/clickpass-backend.service /etc/systemd/system/
+# Luego: sudo systemctl daemon-reload && sudo systemctl enable --now clickpass-backend
+[Unit]
+Description=Clickpass backend (Docker)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Restart=always
+RestartSec=5
+ExecStartPre=-/usr/bin/docker stop clickpass-backend
+ExecStartPre=-/usr/bin/docker rm clickpass-backend
+ExecStart=/usr/bin/docker run --rm --name clickpass-backend \
+  --env-file /home/ubuntu/clickpass/apps/backend/.env \
+  -p 127.0.0.1:3001:3001 \
+  clickpass-backend:latest
+ExecStop=/usr/bin/docker stop clickpass-backend
+
+[Install]
+WantedBy=multi-user.target
