@@ -38,6 +38,8 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    // Solo USER u ORGANIZER por registro público; cualquier otro valor cae a USER.
+    const role = dto.role === Role.ORGANIZER ? Role.ORGANIZER : Role.USER;
     const user = await this.prisma.user.create({
       data: {
         email: dto.email.toLowerCase(),
@@ -45,6 +47,7 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone,
+        role,
       },
     });
 

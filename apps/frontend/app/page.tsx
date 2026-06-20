@@ -130,7 +130,7 @@ function CTASection() {
             Comisiones transparentes, sin costos ocultos.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/auth/register" className="btn-neon text-base">
+            <Link href="/auth/register?type=organizer" className="btn-neon text-base">
               Empezar ahora
             </Link>
             <Link href="/migrate-from-passline" className="btn-outline text-base">

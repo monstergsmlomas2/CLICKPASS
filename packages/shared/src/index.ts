@@ -48,6 +48,8 @@ export interface RegisterInput {
   firstName: string;
   lastName: string;
   phone: string;
+  /** Tipo de cuenta. Solo USER (comprador) u ORGANIZER; nunca ADMIN por esta vía. */
+  role?: Extract<Role, 'USER' | 'ORGANIZER'>;
 }
 
 export interface LoginInput {

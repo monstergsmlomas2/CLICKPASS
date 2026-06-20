@@ -19,11 +19,18 @@ function isValidPhone(value: string): boolean {
   return digits.length >= 10 && digits.length <= 15;
 }
 
-export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
+export function AuthForm({
+  mode,
+  defaultOrganizer = false,
+}: {
+  mode: 'login' | 'register';
+  defaultOrganizer?: boolean;
+}) {
   const router = useRouter();
   const setSession = useAuth((s) => s.setSession);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOrganizer, setIsOrganizer] = useState(defaultOrganizer);
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -45,7 +52,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     try {
       const path = isRegister ? '/auth/register' : '/auth/login';
       const body = isRegister
-        ? form
+        ? { ...form, role: isOrganizer ? 'ORGANIZER' : 'USER' }
         : { email: form.email, password: form.password };
       const res = await api<AuthResponse>(path, { method: 'POST', body });
       setSession(res);
@@ -68,8 +75,40 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
           {isRegister ? 'Nueva cuenta' : 'Bienvenido de vuelta'}
         </span>
         <h1 className="mt-1 font-display text-4xl font-bold text-fg">
-          {isRegister ? 'Sumate a Clickpass' : 'Ingresá'}
+          {isRegister
+            ? isOrganizer
+              ? 'Vendé con Clickpass'
+              : 'Sumate a Clickpass'
+            : 'Ingresá'}
         </h1>
+
+        {isRegister && (
+          <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-line p-1">
+            <button
+              type="button"
+              onClick={() => setIsOrganizer(false)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                !isOrganizer ? 'bg-lime/15 text-lime' : 'text-muted hover:text-fg'
+              }`}
+            >
+              Quiero comprar
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOrganizer(true)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isOrganizer ? 'bg-lime/15 text-lime' : 'text-muted hover:text-fg'
+              }`}
+            >
+              Vender eventos
+            </button>
+          </div>
+        )}
+        {isRegister && isOrganizer && (
+          <p className="mt-3 text-xs text-muted">
+            Publicá y vendé tus entradas. Gratis los primeros 3 meses, después 5% por entrada.
+          </p>
+        )}
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           {isRegister && (

@@ -27,6 +27,9 @@ export function Nav() {
           <Link href="/#garantia" className="text-muted hover:text-lime transition-colors">
             Garantía 48h
           </Link>
+          <Link href="/auth/register?type=organizer" className="text-muted hover:text-lime transition-colors">
+            Organizadores
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -89,6 +92,9 @@ export function Nav() {
             </Link>
             <Link href="/#garantia" className="text-muted hover:text-lime" onClick={() => setMenuOpen(false)}>
               Garantía 48h
+            </Link>
+            <Link href="/auth/register?type=organizer" className="text-muted hover:text-lime" onClick={() => setMenuOpen(false)}>
+              Organizadores
             </Link>
           </nav>
         </div>

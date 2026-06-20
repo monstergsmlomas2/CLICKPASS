@@ -1,6 +1,8 @@
 import {
   IsEmail,
+  IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -8,7 +10,7 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import type { RegisterInput } from '@clickpass/shared';
+import { Role, type RegisterInput } from '@clickpass/shared';
 
 @ValidatorConstraint({ name: 'isWhatsAppPhone' })
 class IsWhatsAppPhoneConstraint implements ValidatorConstraintInterface {
@@ -48,4 +50,9 @@ export class RegisterDto implements RegisterInput {
   @MaxLength(30)
   @Validate(IsWhatsAppPhoneConstraint)
   phone: string;
+
+  // Solo se admite USER u ORGANIZER por registro público; ADMIN nunca por esta vía.
+  @IsOptional()
+  @IsIn([Role.USER, Role.ORGANIZER])
+  role?: typeof Role.USER | typeof Role.ORGANIZER;
 }
