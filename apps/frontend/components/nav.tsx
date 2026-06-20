@@ -11,6 +11,16 @@ export function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // El destino de "Organizadores" depende de la sesión: invitado → registro como
+  // organizador; comprador → su panel (ahí está "Convertite en organizador");
+  // organizador/admin → su panel.
+  const organizerHref =
+    mounted && user
+      ? user.role === 'ORGANIZER' || user.role === 'ADMIN'
+        ? '/dashboard/organizer'
+        : '/dashboard/user'
+      : '/auth/register?type=organizer';
+
   return (
     <header className="sticky top-0 z-50 glass rounded-none border-x-0 border-t-0">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
@@ -27,7 +37,7 @@ export function Nav() {
           <Link href="/#garantia" className="text-muted hover:text-lime transition-colors">
             Garantía 48h
           </Link>
-          <Link href="/auth/register?type=organizer" className="text-muted hover:text-lime transition-colors">
+          <Link href={organizerHref} className="text-muted hover:text-lime transition-colors">
             Organizadores
           </Link>
         </nav>
@@ -93,7 +103,7 @@ export function Nav() {
             <Link href="/#garantia" className="text-muted hover:text-lime" onClick={() => setMenuOpen(false)}>
               Garantía 48h
             </Link>
-            <Link href="/auth/register?type=organizer" className="text-muted hover:text-lime" onClick={() => setMenuOpen(false)}>
+            <Link href={organizerHref} className="text-muted hover:text-lime" onClick={() => setMenuOpen(false)}>
               Organizadores
             </Link>
           </nav>

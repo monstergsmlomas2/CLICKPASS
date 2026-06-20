@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, MessageCircle } from 'lucide-react';
@@ -28,9 +28,21 @@ export function AuthForm({
 }) {
   const router = useRouter();
   const setSession = useAuth((s) => s.setSession);
+  const sessionUser = useAuth((s) => s.user);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isOrganizer, setIsOrganizer] = useState(defaultOrganizer);
+
+  // Si ya hay sesión, no tiene sentido mostrar login/registro: al panel correspondiente.
+  useEffect(() => {
+    if (sessionUser) {
+      router.replace(
+        sessionUser.role === 'ORGANIZER' || sessionUser.role === 'ADMIN'
+          ? '/dashboard/organizer'
+          : '/dashboard/user',
+      );
+    }
+  }, [sessionUser, router]);
   const [form, setForm] = useState({
     email: '',
     password: '',
