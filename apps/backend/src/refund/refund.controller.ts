@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsString, IsEmail } from 'class-validator';
 import { RefundService } from './refund.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -13,6 +13,21 @@ class RequestRefundDto {
   paymentId: string;
 }
 
+class RequestGuestRefundDto {
+  @IsString()
+  @IsNotEmpty()
+  paymentId: string;
+
+  @IsEmail()
+  email: string;
+}
+
+class ConfirmGuestRefundDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}
+
 @Controller('refunds')
 export class RefundController {
   constructor(private readonly refunds: RefundService) {}
@@ -23,6 +38,23 @@ export class RefundController {
   @HttpCode(HttpStatus.CREATED)
   request(@CurrentUser() user: JwtAccessPayload, @Body() dto: RequestRefundDto) {
     return this.refunds.requestUserRefund(user, dto.paymentId);
+  }
+
+  /**
+   * Paso 1 para comprador SIN cuenta: pide el link de reembolso indicando paymentId + email.
+   * Público. Respuesta genérica (no revela si el pago existe).
+   */
+  @Post('request-guest')
+  @HttpCode(HttpStatus.OK)
+  requestGuest(@Body() dto: RequestGuestRefundDto) {
+    return this.refunds.requestGuestRefundLink(dto.paymentId, dto.email);
+  }
+
+  /** Paso 2 para comprador SIN cuenta: confirma el reembolso con el token del email. Público. */
+  @Post('confirm-guest')
+  @HttpCode(HttpStatus.OK)
+  confirmGuest(@Body() dto: ConfirmGuestRefundDto) {
+    return this.refunds.confirmGuestRefund(dto.token);
   }
 
   @Get('mine')

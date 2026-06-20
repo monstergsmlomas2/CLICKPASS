@@ -8,6 +8,7 @@ export const DomainEvents = {
   TICKET_PURCHASED: 'ticket.purchased',
   EVENT_CANCELLED: 'event.cancelled',
   REFUND_REQUESTED: 'refund.requested',
+  REFUND_LINK_REQUESTED: 'refund.link_requested',
   REFUND_COMPLETED: 'refund.completed',
 } as const;
 
@@ -26,6 +27,14 @@ export interface EventCancelledPayload {
   eventId: string;
   eventTitle: string;
   eventDateIds: string[];
+}
+
+/** Link de confirmación de reembolso para un comprador sin cuenta (verificación por email). */
+export interface RefundLinkRequestedPayload {
+  paymentId: string;
+  email: string;
+  confirmUrl: string;
+  currency: string;
 }
 
 export interface RefundCompletedPayload {

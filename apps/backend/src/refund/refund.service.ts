@@ -5,8 +5,10 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { PaymentGateway, PAYMENT_GATEWAY } from '../payment/gateway/payment-gateway';
@@ -15,9 +17,13 @@ import {
   DomainEvents,
   EventCancelledPayload,
   RefundCompletedPayload,
+  RefundLinkRequestedPayload,
 } from '../common/events/domain-events';
 import { Prisma } from '@prisma/client';
-import type { Payment } from '@prisma/client';
+import type { Payment, Event } from '@prisma/client';
+
+/** Vigencia del link de confirmación de reembolso para invitados. */
+const GUEST_REFUND_TOKEN_TTL = '30m';
 
 const MAX_REFUND_ATTEMPTS = 3;
 
@@ -28,6 +34,7 @@ export class RefundService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly jwt: JwtService,
     private readonly emitter: EventEmitter2,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
   ) {}
@@ -59,6 +66,15 @@ export class RefundService {
     if (!payment || payment.userId !== user.sub) {
       throw new NotFoundException('Pago no encontrado');
     }
+    const { event } = await this.assertVoluntaryRefundAllowed(payment);
+    return this.processPaymentRefund(payment, event.id, 'USER_REQUEST');
+  }
+
+  /**
+   * Valida que un pago sea elegible para reembolso voluntario (estado SUCCEEDED y
+   * política del organizador que lo permita). Lanza si no procede; devuelve el evento.
+   */
+  private async assertVoluntaryRefundAllowed(payment: Payment): Promise<{ event: Event }> {
     if (payment.status !== 'SUCCEEDED') {
       throw new BadRequestException('El pago no está en un estado reembolsable');
     }
@@ -87,7 +103,88 @@ export class RefundService {
         );
     }
 
-    return this.processPaymentRefund(payment, event.id, 'USER_REQUEST');
+    return { event };
+  }
+
+  /**
+   * Paso 1 (comprador SIN cuenta): pide un reembolso voluntario validando solo el email.
+   * Si el pago existe, el email coincide y el reembolso es elegible, se envía a esa casilla
+   * un link de confirmación con token firmado (vence en 30 min). La respuesta es SIEMPRE
+   * genérica: no revela si el pago existe ni si el email coincide.
+   */
+  async requestGuestRefundLink(paymentId: string, email: string) {
+    const generic = {
+      ok: true,
+      message:
+        'Si los datos coinciden y la compra es elegible, te enviamos un email con el link para confirmar el reembolso.',
+    };
+
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    // Solo invitados (sin userId); el email debe coincidir (case-insensitive).
+    if (
+      !payment ||
+      payment.userId ||
+      !payment.guestEmail ||
+      payment.guestEmail.toLowerCase() !== email.trim().toLowerCase()
+    ) {
+      return generic;
+    }
+
+    try {
+      await this.assertVoluntaryRefundAllowed(payment);
+    } catch {
+      // No filtrar el motivo exacto por esta vía pública.
+      return generic;
+    }
+
+    const token = await this.jwt.signAsync(
+      { sub: payment.id, purpose: 'guest_refund' },
+      {
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+        expiresIn: GUEST_REFUND_TOKEN_TTL,
+      },
+    );
+
+    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    const evt: RefundLinkRequestedPayload = {
+      paymentId: payment.id,
+      email: payment.guestEmail,
+      confirmUrl: `${frontendUrl}/refunds/confirm?token=${encodeURIComponent(token)}`,
+      currency: payment.currency,
+    };
+    this.emitter.emit(DomainEvents.REFUND_LINK_REQUESTED, evt);
+    this.logger.log(`Link de reembolso enviado para el pago ${payment.id} (invitado)`);
+
+    return generic;
+  }
+
+  /**
+   * Paso 2 (comprador SIN cuenta): confirma el reembolso con el token del email. Verifica
+   * la firma/expiración, revalida la elegibilidad y ejecuta el reembolso (retiene el 15%).
+   */
+  async confirmGuestRefund(token: string) {
+    let paymentId: string;
+    try {
+      const claims = await this.jwt.verifyAsync<{ sub: string; purpose: string }>(token, {
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+      });
+      if (claims.purpose !== 'guest_refund') throw new Error('purpose inválido');
+      paymentId = claims.sub;
+    } catch {
+      throw new UnauthorizedException('El link es inválido o expiró. Pedí uno nuevo.');
+    }
+
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment || payment.userId) {
+      throw new NotFoundException('Pago no encontrado');
+    }
+    const { event } = await this.assertVoluntaryRefundAllowed(payment);
+    const refund = await this.processPaymentRefund(payment, event.id, 'USER_REQUEST');
+    return {
+      ok: true,
+      amount: refund.amount.toString(),
+      currency: refund.currency,
+    };
   }
 
   /**
