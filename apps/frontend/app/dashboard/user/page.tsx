@@ -35,10 +35,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function UserDashboard() {
   const router = useRouter();
-  const { user, accessToken } = useAuth();
+  const { user, accessToken, setSession } = useAuth();
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -72,6 +73,23 @@ export default function UserDashboard() {
     }
   }
 
+  async function becomeOrganizer() {
+    setUpgrading(true);
+    setNotice(null);
+    try {
+      const res = await api<{
+        user: typeof user;
+        accessToken: string;
+        refreshToken: string;
+      }>('/auth/become-organizer', { method: 'POST', auth: true });
+      if (res.user) setSession({ user: res.user, accessToken: res.accessToken, refreshToken: res.refreshToken });
+      router.push('/dashboard/organizer');
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'No se pudo convertir la cuenta');
+      setUpgrading(false);
+    }
+  }
+
   const confirmed = tickets?.filter((t) => t.status === 'CONFIRMED') ?? [];
 
   return (
@@ -92,6 +110,21 @@ export default function UserDashboard() {
         <p className="mt-6 glass border-cyan/30 px-4 py-3 text-sm font-medium text-cyan">
           {notice}
         </p>
+      )}
+
+      {user?.role === 'USER' && (
+        <div className="mt-6 glass flex flex-wrap items-center justify-between gap-3 p-4">
+          <p className="text-sm text-muted">
+            ¿Organizás eventos? Empezá a vender tus propias entradas con Clickpass.
+          </p>
+          <button
+            onClick={becomeOrganizer}
+            disabled={upgrading}
+            className="btn-neon text-sm !px-4 !py-2 disabled:opacity-50"
+          >
+            {upgrading ? 'Activando…' : 'Convertite en organizador'}
+          </button>
+        </div>
       )}
 
       {tickets === null ? (

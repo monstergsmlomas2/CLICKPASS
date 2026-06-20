@@ -68,6 +68,27 @@ export class AuthService {
     return { ...tokens, user: this.toPublicUser(user) };
   }
 
+  /**
+   * Convierte una cuenta de comprador (USER) en organizadora. Autoservicio: no requiere
+   * aprobación. Reemite tokens porque el rol viaja en el JWT y la sesión actual debe
+   * tomar el cambio sin re-login. Idempotente si ya es ORGANIZER; ADMIN no se modifica.
+   */
+  async becomeOrganizer(userId: string): Promise<AuthResponse> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
+    const updated =
+      user.role === Role.USER
+        ? await this.prisma.user.update({
+            where: { id: userId },
+            data: { role: Role.ORGANIZER },
+          })
+        : user;
+
+    const tokens = await this.issueTokens(updated);
+    return { ...tokens, user: this.toPublicUser(updated) };
+  }
+
   /** Rotación: valida el refresh, revoca el usado y emite un par nuevo. */
   async refresh(refreshToken: string): Promise<AuthResponse> {
     let payload: JwtAccessPayload & { type?: string };

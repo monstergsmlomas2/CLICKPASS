@@ -43,4 +43,13 @@ export class AuthController {
   me(@Req() req: Request) {
     return req.user;
   }
+
+  /** Un comprador (USER) pasa a organizador. Reemite tokens con el nuevo rol. */
+  @Post('become-organizer')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  becomeOrganizer(@Req() req: Request) {
+    const user = req.user as { sub: string };
+    return this.auth.becomeOrganizer(user.sub);
+  }
 }
