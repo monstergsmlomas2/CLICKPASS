@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowLeft, Plus, Trash2, ImagePlus, X } from 'lucide-react';
 import { api } from '../../../../lib/api';
+import { uploadEventImage } from '../../../../lib/cloudinary';
 
 interface DateRow {
   startDate: string;
@@ -28,12 +30,30 @@ export default function NewEventPage() {
     title: '',
     description: '',
     category: CATEGORIES[0],
+    bannerUrl: '',
     venueName: '',
     city: '',
     country: 'Argentina',
     refundPolicy: 'STANDARD',
   });
   const [dates, setDates] = useState<DateRow[]>([emptyDate()]);
+  const [uploading, setUploading] = useState(false);
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-elegir el mismo archivo
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const url = await uploadEventImage(file);
+      setForm((f) => ({ ...f, bannerUrl: url }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo subir la imagen');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function updateDate(i: number, patch: Partial<DateRow>) {
     setDates((d) => d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
@@ -44,11 +64,13 @@ export default function NewEventPage() {
     setError(null);
     setLoading(true);
     try {
+      const { bannerUrl, ...rest } = form;
       await api('/events', {
         method: 'POST',
         auth: true,
         body: {
-          ...form,
+          ...rest,
+          ...(bannerUrl ? { bannerUrl } : {}),
           dates: dates.map((d) => ({
             startDate: new Date(d.startDate).toISOString(),
             endDate: new Date(d.endDate).toISOString(),
@@ -90,6 +112,46 @@ export default function NewEventPage() {
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
         />
+
+        <div>
+          <span className="font-mono text-xs uppercase tracking-widest text-muted">
+            Imagen del evento (opcional)
+          </span>
+          {form.bannerUrl ? (
+            <div className="relative mt-2 overflow-hidden rounded-xl border border-line">
+              <Image
+                src={form.bannerUrl}
+                alt="Banner del evento"
+                width={1200}
+                height={480}
+                className="h-44 w-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, bannerUrl: '' })}
+                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+                aria-label="Quitar imagen"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <label
+              className={`mt-2 flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line text-muted transition-colors hover:border-emerald/40 hover:text-emerald ${
+                uploading ? 'pointer-events-none opacity-60' : ''
+              }`}
+            >
+              <ImagePlus size={22} />
+              <span className="text-sm">
+                {uploading ? 'Subiendo…' : 'Subí una foto o banner (hasta 8 MB)'}
+              </span>
+              <input type="file" accept="image/*" className="hidden" onChange={onPickImage} />
+            </label>
+          )}
+          <p className="mt-1.5 text-xs text-muted">
+            Si no subís ninguna, usamos una imagen según la categoría.
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <select
             className="field appearance-none"
