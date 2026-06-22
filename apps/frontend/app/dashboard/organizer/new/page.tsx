@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Plus, Trash2, ImagePlus, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, ImagePlus, X, Repeat } from 'lucide-react';
 import { api } from '../../../../lib/api';
 import { uploadEventImage } from '../../../../lib/cloudinary';
 
@@ -20,6 +20,15 @@ const CATEGORIES = ['musica', 'teatro', 'deporte', 'festival', 'fiesta'];
 
 function emptyDate(): DateRow {
   return { startDate: '', endDate: '', capacity: '', price: '', currency: 'ARS' };
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Date → string para <input datetime-local> ("YYYY-MM-DDTHH:mm"), en hora local. */
+function toLocalInput(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function NewEventPage() {
@@ -38,6 +47,62 @@ export default function NewEventPage() {
   });
   const [dates, setDates] = useState<DateRow[]>([emptyDate()]);
   const [uploading, setUploading] = useState(false);
+  const [rep, setRep] = useState({
+    start: '',
+    end: '',
+    frequency: 'weekly',
+    until: '',
+    capacity: '',
+    price: '',
+  });
+
+  /** Genera funciones repetidas (semanal/quincenal/mensual) hasta la fecha tope. */
+  function generateRepeated() {
+    setError(null);
+    if (!rep.start || !rep.end || !rep.until || !rep.capacity || !rep.price) {
+      setError('Para repetir, completá inicio, fin, cupo, precio y la fecha tope.');
+      return;
+    }
+    const startD = new Date(rep.start);
+    const endD = new Date(rep.end);
+    const duration = endD.getTime() - startD.getTime();
+    if (duration <= 0) {
+      setError('El horario de fin debe ser posterior al de inicio.');
+      return;
+    }
+    const untilD = new Date(`${rep.until}T23:59`);
+    if (untilD < startD) {
+      setError('La fecha tope debe ser posterior a la primera función.');
+      return;
+    }
+
+    const rows: DateRow[] = [];
+    let cur = new Date(startD);
+    let guard = 0;
+    while (cur <= untilD && guard < 200) {
+      const e = new Date(cur.getTime() + duration);
+      rows.push({
+        startDate: toLocalInput(cur),
+        endDate: toLocalInput(e),
+        capacity: rep.capacity,
+        price: rep.price,
+        currency: 'ARS',
+      });
+      if (rep.frequency === 'monthly') {
+        cur = new Date(cur);
+        cur.setMonth(cur.getMonth() + 1);
+      } else {
+        cur = new Date(cur.getTime() + (rep.frequency === 'biweekly' ? 14 : 7) * 86400000);
+      }
+      guard += 1;
+    }
+    if (rows.length === 0) {
+      setError('No se generó ninguna fecha. Revisá las fechas.');
+      return;
+    }
+    // Suma las generadas a las funciones, descartando filas vacías iniciales.
+    setDates((d) => [...d.filter((r) => r.startDate && r.endDate), ...rows]);
+  }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -198,6 +263,84 @@ export default function NewEventPage() {
               <Plus size={14} /> Agregar función
             </button>
           </div>
+
+          <details className="mt-3 glass p-4">
+            <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-emerald">
+              <Repeat size={15} /> ¿Se repite? Generar fechas automáticamente
+            </summary>
+            <p className="mt-3 text-xs text-muted">
+              Para eventos recurrentes (ej. fiesta de todos los sábados). Genera todas las
+              funciones hasta la fecha tope; después podés editar o borrar las que quieras.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs text-muted">Primera función — inicio</span>
+                <input
+                  type="datetime-local"
+                  className="field mt-1"
+                  value={rep.start}
+                  onChange={(e) => setRep({ ...rep, start: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Primera función — fin</span>
+                <input
+                  type="datetime-local"
+                  className="field mt-1"
+                  value={rep.end}
+                  onChange={(e) => setRep({ ...rep, end: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Frecuencia</span>
+                <select
+                  className="field mt-1 appearance-none"
+                  value={rep.frequency}
+                  onChange={(e) => setRep({ ...rep, frequency: e.target.value })}
+                >
+                  <option value="weekly">Cada semana</option>
+                  <option value="biweekly">Cada 2 semanas</option>
+                  <option value="monthly">Cada mes</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Repetir hasta</span>
+                <input
+                  type="date"
+                  className="field mt-1"
+                  value={rep.until}
+                  onChange={(e) => setRep({ ...rep, until: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Cupo (cada fecha)</span>
+                <input
+                  type="number"
+                  min={1}
+                  className="field mt-1"
+                  value={rep.capacity}
+                  onChange={(e) => setRep({ ...rep, capacity: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Precio ARS (cada fecha)</span>
+                <input
+                  type="number"
+                  min={0}
+                  className="field mt-1"
+                  value={rep.price}
+                  onChange={(e) => setRep({ ...rep, price: e.target.value })}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={generateRepeated}
+              className="btn-outline mt-3 w-full text-sm !py-2"
+            >
+              Generar fechas
+            </button>
+          </details>
 
           <div className="mt-3 space-y-3">
             {dates.map((d, i) => (
