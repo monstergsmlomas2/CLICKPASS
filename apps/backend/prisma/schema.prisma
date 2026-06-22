@@ -98,7 +98,8 @@ model Event {
   title        String
   description  String?
   category     String
-  bannerUrl    String?
+  bannerUrl    String? // imagen principal (cuadrada): grilla/listado
+  coverUrl     String? // imagen panorámica opcional: banner de la página del evento
   organizerId  String // ID externo (dominio auth), sin FK cruzando schemas
   status       EventStatus @default(DRAFT)
   createdAt    DateTime    @default(now())

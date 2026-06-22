@@ -32,6 +32,7 @@ export class EventService {
         description: dto.description,
         category: dto.category,
         bannerUrl: dto.bannerUrl,
+        coverUrl: dto.coverUrl,
         venueName: dto.venueName,
         venueAddress: dto.venueAddress,
         city: dto.city,

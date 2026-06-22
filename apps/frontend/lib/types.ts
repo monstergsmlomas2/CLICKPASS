@@ -15,9 +15,11 @@ export interface EventItem {
   description?: string | null;
   category: string;
   bannerUrl?: string | null;
+  coverUrl?: string | null;
   city?: string | null;
   country?: string | null;
   venueName?: string | null;
+  venueAddress?: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
   refundPolicy: 'STANDARD' | 'NO_REFUND' | 'FLEXIBLE';
   dates: EventDate[];

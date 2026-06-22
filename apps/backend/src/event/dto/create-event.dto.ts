@@ -58,6 +58,10 @@ export class CreateEventDto {
 
   @IsOptional()
   @IsString()
+  coverUrl?: string;
+
+  @IsOptional()
+  @IsString()
   venueName?: string;
 
   @IsOptional()

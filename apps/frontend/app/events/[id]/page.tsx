@@ -21,7 +21,16 @@ export default async function EventDetailPage({ params }: { params: { id: string
   const event = await apiPublic<EventItem>(`/events/${params.id}`);
   if (!event) notFound();
 
-  const image = getEventImage(event.category, event.bannerUrl, event.id);
+  // Banner ancho: preferir la panorámica; si no hay, usar la principal o el fallback.
+  const image = getEventImage(event.category, event.coverUrl ?? event.bannerUrl, event.id);
+
+  // Dirección para mapa: dirección exacta si hay, sino sede + ciudad.
+  const mapQuery = [event.venueAddress, event.venueName, event.city, event.country]
+    .filter(Boolean)
+    .join(', ');
+  const mapsLink = mapQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`
+    : null;
 
   return (
     <article>
@@ -84,6 +93,39 @@ export default async function EventDetailPage({ params }: { params: { id: string
                 })}
               </ul>
             </div>
+
+            {/* Cómo llegar */}
+            {mapsLink && (
+              <div>
+                <h2 className="font-mono text-xs uppercase tracking-widest text-emerald">Cómo llegar</h2>
+                <div className="glass mt-3 overflow-hidden">
+                  <div className="px-5 py-4">
+                    <p className="flex items-center gap-1.5 font-medium text-fg">
+                      <MapPin size={16} className="text-emerald" />
+                      {event.venueName ?? event.venueAddress}
+                    </p>
+                    {event.venueAddress && (
+                      <p className="mt-1 text-sm text-muted">{event.venueAddress}</p>
+                    )}
+                  </div>
+                  <iframe
+                    title="Mapa del lugar"
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`}
+                    className="h-64 w-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                  <a
+                    href={mapsLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-5 py-3 text-center text-sm font-medium text-emerald hover:underline"
+                  >
+                    Abrir en Google Maps
+                  </a>
+                </div>
+              </div>
+            )}
 
             {/* Garantía destacada */}
             <div className="glass border-emerald/20 p-6">

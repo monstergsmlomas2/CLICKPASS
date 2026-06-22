@@ -40,13 +40,15 @@ export default function NewEventPage() {
     description: '',
     category: CATEGORIES[0],
     bannerUrl: '',
+    coverUrl: '',
     venueName: '',
+    venueAddress: '',
     city: '',
     country: 'Argentina',
     refundPolicy: 'STANDARD',
   });
   const [dates, setDates] = useState<DateRow[]>([emptyDate()]);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingField, setUploadingField] = useState<'bannerUrl' | 'coverUrl' | null>(null);
   const [rep, setRep] = useState({
     start: '',
     end: '',
@@ -104,19 +106,22 @@ export default function NewEventPage() {
     setDates((d) => [...d.filter((r) => r.startDate && r.endDate), ...rows]);
   }
 
-  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPickImage(
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: 'bannerUrl' | 'coverUrl',
+  ) {
     const file = e.target.files?.[0];
     e.target.value = ''; // permite re-elegir el mismo archivo
     if (!file) return;
     setError(null);
-    setUploading(true);
+    setUploadingField(field);
     try {
       const url = await uploadEventImage(file);
-      setForm((f) => ({ ...f, bannerUrl: url }));
+      setForm((f) => ({ ...f, [field]: url }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir la imagen');
     } finally {
-      setUploading(false);
+      setUploadingField(null);
     }
   }
 
@@ -129,13 +134,14 @@ export default function NewEventPage() {
     setError(null);
     setLoading(true);
     try {
-      const { bannerUrl, ...rest } = form;
+      const { bannerUrl, coverUrl, ...rest } = form;
       await api('/events', {
         method: 'POST',
         auth: true,
         body: {
           ...rest,
           ...(bannerUrl ? { bannerUrl } : {}),
+          ...(coverUrl ? { coverUrl } : {}),
           dates: dates.map((d) => ({
             startDate: new Date(d.startDate).toISOString(),
             endDate: new Date(d.endDate).toISOString(),
@@ -178,45 +184,24 @@ export default function NewEventPage() {
           onChange={(e) => setForm({ ...form, description: e.target.value })}
         />
 
-        <div>
-          <span className="font-mono text-xs uppercase tracking-widest text-muted">
-            Imagen del evento (opcional)
-          </span>
-          {form.bannerUrl ? (
-            <div className="relative mt-2 overflow-hidden rounded-xl border border-line">
-              <Image
-                src={form.bannerUrl}
-                alt="Banner del evento"
-                width={1200}
-                height={480}
-                className="h-44 w-full object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, bannerUrl: '' })}
-                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
-                aria-label="Quitar imagen"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ) : (
-            <label
-              className={`mt-2 flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line text-muted transition-colors hover:border-emerald/40 hover:text-emerald ${
-                uploading ? 'pointer-events-none opacity-60' : ''
-              }`}
-            >
-              <ImagePlus size={22} />
-              <span className="text-sm">
-                {uploading ? 'Subiendo…' : 'Subí una foto o banner (hasta 8 MB)'}
-              </span>
-              <input type="file" accept="image/*" className="hidden" onChange={onPickImage} />
-            </label>
-          )}
-          <p className="mt-1.5 text-xs text-muted">
-            Si no subís ninguna, usamos una imagen según la categoría.
-          </p>
-        </div>
+        <ImageUploader
+          label="Imagen principal (para la grilla)"
+          hint="Cuadrada o vertical (el flyer típico de Instagram). Si no subís ninguna, usamos una según la categoría."
+          value={form.bannerUrl}
+          uploading={uploadingField === 'bannerUrl'}
+          onPick={(e) => onPickImage(e, 'bannerUrl')}
+          onClear={() => setForm({ ...form, bannerUrl: '' })}
+          previewClass="h-44"
+        />
+        <ImageUploader
+          label="Imagen panorámica (opcional)"
+          hint="Ancha/horizontal: se muestra grande arriba en la página del evento. Si no subís, se usa la principal."
+          value={form.coverUrl}
+          uploading={uploadingField === 'coverUrl'}
+          onPick={(e) => onPickImage(e, 'coverUrl')}
+          onClear={() => setForm({ ...form, coverUrl: '' })}
+          previewClass="h-28"
+        />
         <div className="grid grid-cols-2 gap-3">
           <select
             className="field appearance-none"
@@ -251,6 +236,12 @@ export default function NewEventPage() {
             onChange={(e) => setForm({ ...form, city: e.target.value })}
           />
         </div>
+        <input
+          className="field"
+          placeholder="Dirección exacta (ej: Av. Corrientes 1234)"
+          value={form.venueAddress}
+          onChange={(e) => setForm({ ...form, venueAddress: e.target.value })}
+        />
 
         <div>
           <div className="flex items-center justify-between">
@@ -416,6 +407,54 @@ export default function NewEventPage() {
           {loading ? 'Creando…' : 'Crear evento (borrador)'}
         </button>
       </form>
+    </div>
+  );
+}
+
+function ImageUploader({
+  label,
+  hint,
+  value,
+  uploading,
+  onPick,
+  onClear,
+  previewClass,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  uploading: boolean;
+  onPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
+  previewClass: string;
+}) {
+  return (
+    <div>
+      <span className="font-mono text-xs uppercase tracking-widest text-muted">{label}</span>
+      {value ? (
+        <div className="relative mt-2 overflow-hidden rounded-xl border border-line">
+          <Image src={value} alt={label} width={1200} height={480} className={`w-full object-cover ${previewClass}`} />
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+            aria-label="Quitar imagen"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : (
+        <label
+          className={`mt-2 flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line text-muted transition-colors hover:border-emerald/40 hover:text-emerald ${
+            uploading ? 'pointer-events-none opacity-60' : ''
+          }`}
+        >
+          <ImagePlus size={22} />
+          <span className="text-sm">{uploading ? 'Subiendo…' : 'Subí una imagen (hasta 8 MB)'}</span>
+          <input type="file" accept="image/*" className="hidden" onChange={onPick} />
+        </label>
+      )}
+      <p className="mt-1.5 text-xs text-muted">{hint}</p>
     </div>
   );
 }
