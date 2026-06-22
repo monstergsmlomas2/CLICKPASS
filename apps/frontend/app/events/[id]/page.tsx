@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, MapPin, ShieldCheck, Users } from 'lucide-react';
 import { apiPublic } from '../../../lib/api';
-import type { EventItem } from '../../../lib/types';
+import type { EventItem, Product } from '../../../lib/types';
 import { BuyBox } from '../../../components/buy-box';
 import { formatDate } from '../../../lib/format';
 import { getEventImage } from '../../../lib/eventImages';
@@ -20,6 +20,7 @@ const POLICY_LABEL: Record<string, string> = {
 export default async function EventDetailPage({ params }: { params: { id: string } }) {
   const event = await apiPublic<EventItem>(`/events/${params.id}`);
   if (!event) notFound();
+  const products = (await apiPublic<Product[]>(`/events/${params.id}/products`)) ?? [];
 
   // Banner ancho: preferir la panorámica; si no hay, usar la principal o el fallback.
   const image = getEventImage(event.category, event.coverUrl ?? event.bannerUrl, event.id);
@@ -137,7 +138,7 @@ export default async function EventDetailPage({ params }: { params: { id: string
           </ScrollReveal>
 
           {event.status === 'PUBLISHED' ? (
-            <BuyBox event={event} />
+            <BuyBox event={event} products={products} />
           ) : (
             <aside className="glass p-6 text-center">
               <p className="text-muted">

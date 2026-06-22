@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Store, Upload, Eye, Plus, Megaphone, Ban } from 'lucide-react';
+import { Store, Upload, Eye, Plus, Megaphone, Ban, Beer } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/store';
 import type { EventItem } from '../../../lib/types';
@@ -157,6 +157,12 @@ export default function OrganizerDashboard() {
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    <Link
+                      href={`/dashboard/organizer/events/${e.id}/products`}
+                      className="btn-outline flex items-center gap-1.5 text-sm !px-4 !py-2"
+                    >
+                      <Beer size={14} /> Combos
+                    </Link>
                     {e.status === 'DRAFT' && (
                       <button
                         onClick={() => publish(e.id)}

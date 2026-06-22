@@ -125,6 +125,19 @@ export class TicketService {
       throw new ConflictException('No hay cupo suficiente');
     }
 
+    // Paso 1b — Consumiciones elegidas (opcional): descuento atómico de stock por
+    // producto. Si alguno no tiene stock suficiente, se libera el cupo de entradas
+    // recién tomado (compensación) y se aborta toda la reserva.
+    let itemsSnapshot: { productId: string; name: string; unitPrice: string; quantity: number }[] = [];
+    if (dto.items && dto.items.length > 0) {
+      try {
+        itemsSnapshot = await this.reserveProducts(eventDate.eventId, dto.items);
+      } catch (err) {
+        await this.releaseDateCapacity(eventDateId, quantity);
+        throw err;
+      }
+    }
+
     const { ticketsSold, capacity } = rows[0];
     const tickets = Array.from({ length: quantity }, () => {
       const id = randomUUID();
@@ -152,6 +165,7 @@ export class TicketService {
           userId: identity.userId,
           guestEmail: identity.guestEmail,
           quantity,
+          items: itemsSnapshot.length > 0 ? (itemsSnapshot as unknown as Prisma.InputJsonValue) : undefined,
           idempotencyKey,
           expiresAt: new Date(Date.now() + RESERVATION_TTL_MIN * 60 * 1000),
         },
@@ -171,9 +185,74 @@ export class TicketService {
       status: 'RESERVED',
       eventDateId,
       quantity,
+      items: itemsSnapshot,
       expiresInMinutes: RESERVATION_TTL_MIN,
       ticketIds: tickets.map((t) => t.id),
     };
+  }
+
+  /**
+   * Descuenta stock de cada combo elegido con el mismo patrón de UPDATE atómico
+   * que el cupo de entradas (sin sobreventa). Todos los productos deben pertenecer
+   * al mismo evento que la función reservada y estar activos.
+   */
+  private async reserveProducts(eventId: string, items: { productId: string; quantity: number }[]) {
+    const productIds = items.map((i) => i.productId);
+    const products = await this.prisma.product.findMany({ where: { id: { in: productIds } } });
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    const snapshot: { productId: string; name: string; unitPrice: string; quantity: number }[] = [];
+    const applied: { productId: string; quantity: number }[] = [];
+    try {
+      for (const item of items) {
+        const product = byId.get(item.productId);
+        if (!product || product.eventId !== eventId || !product.active) {
+          throw new NotFoundException('Uno de los combos elegidos no está disponible');
+        }
+        const rows = await this.prisma.$queryRaw<{ sold: number }[]>`
+          UPDATE "clickpass_event"."Product"
+          SET "sold" = "sold" + ${item.quantity},
+              "version" = "version" + 1
+          WHERE "id" = ${item.productId}
+            AND "active" = true
+            AND ("stock" IS NULL OR ("stock" - "sold") >= ${item.quantity})
+          RETURNING "sold"`;
+        if (rows.length === 0) {
+          throw new ConflictException(`No hay stock suficiente de "${product.name}"`);
+        }
+        applied.push(item);
+        snapshot.push({
+          productId: product.id,
+          name: product.name,
+          unitPrice: product.price.toString(),
+          quantity: item.quantity,
+        });
+      }
+      return snapshot;
+    } catch (err) {
+      // Compensar lo que sí se llegó a descontar antes de fallar.
+      for (const item of applied) {
+        await this.releaseProductStock(item.productId, item.quantity);
+      }
+      throw err;
+    }
+  }
+
+  private async releaseDateCapacity(eventDateId: string, quantity: number) {
+    await this.prisma.$executeRaw`
+      UPDATE "clickpass_event"."EventDate"
+      SET "ticketsSold" = GREATEST("ticketsSold" - ${quantity}, 0),
+          "status" = 'ACTIVE'::"clickpass_event"."DateStatus",
+          "version" = "version" + 1
+      WHERE "id" = ${eventDateId}`;
+  }
+
+  private async releaseProductStock(productId: string, quantity: number) {
+    await this.prisma.$executeRaw`
+      UPDATE "clickpass_event"."Product"
+      SET "sold" = GREATEST("sold" - ${quantity}, 0),
+          "version" = "version" + 1
+      WHERE "id" = ${productId}`;
   }
 
   private buildQr(ticketId: string): string {

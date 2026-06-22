@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -13,6 +14,8 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { AddEventDateDto } from './dto/add-event-date.dto';
 import { ImportPreviewDto, ImportConfirmDto } from './dto/import-event.dto';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -44,7 +47,54 @@ export class EventController {
     return this.events.findOne(id);
   }
 
+  /** Combos de bebida/comida activos, para mostrar en el checkout del comprador. */
+  @Get(':id/products')
+  listProducts(@Param('id') id: string) {
+    return this.events.listActiveProducts(id);
+  }
+
   // ---- Organizador / Admin ----
+
+  @Get(':id/products/manage')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ORGANIZER, Role.ADMIN)
+  manageProducts(@CurrentUser() user: JwtAccessPayload, @Param('id') id: string) {
+    return this.events.listAllProducts(id, user);
+  }
+
+  @Post(':id/products')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ORGANIZER, Role.ADMIN)
+  addProduct(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateProductDto,
+  ) {
+    return this.events.addProduct(id, user, dto);
+  }
+
+  @Patch(':id/products/:productId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ORGANIZER, Role.ADMIN)
+  updateProduct(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id') id: string,
+    @Param('productId') productId: string,
+    @Body() dto: UpdateProductDto,
+  ) {
+    return this.events.updateProduct(id, productId, user, dto);
+  }
+
+  @Delete(':id/products/:productId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ORGANIZER, Role.ADMIN)
+  deleteProduct(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id') id: string,
+    @Param('productId') productId: string,
+  ) {
+    return this.events.deleteProduct(id, productId, user);
+  }
   @Get('mine/list')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ORGANIZER, Role.ADMIN)

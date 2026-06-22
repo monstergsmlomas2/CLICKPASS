@@ -81,11 +81,21 @@ export class PaymentService {
     }
 
     // Subtotal (lo que publicó el organizador) + 15% de cargo por servicio a cargo del comprador.
+    // Las consumiciones elegidas al reservar (lock.items) llevan el mismo 15%.
     const SERVICE_FEE_RATE = 0.15;
     const subtotal = new Prisma.Decimal(eventDate.price).mul(dto.quantity);
     const serviceFee = subtotal.mul(SERVICE_FEE_RATE);
-    const amount = subtotal.add(serviceFee);
-    const unitPrice = Number(eventDate.price) * (1 + SERVICE_FEE_RATE);
+
+    const lockItems =
+      (lock.items as { productId: string; name: string; unitPrice: string; quantity: number }[] | null) ?? [];
+    const addOnsSubtotal = lockItems.reduce(
+      (acc, item) => acc.add(new Prisma.Decimal(item.unitPrice).mul(item.quantity)),
+      new Prisma.Decimal(0),
+    );
+    const addOnsServiceFee = addOnsSubtotal.mul(SERVICE_FEE_RATE);
+    const addOnsAmount = addOnsSubtotal.add(addOnsServiceFee);
+
+    const amount = subtotal.add(serviceFee).add(addOnsAmount);
 
     const payment = await this.prisma.payment.create({
       data: {
@@ -98,11 +108,15 @@ export class PaymentService {
         amount,
         currency: eventDate.currency,
         ticketsCount: dto.quantity,
+        items: lockItems.length > 0 ? (lockItems as unknown as Prisma.InputJsonValue) : undefined,
+        addOnsAmount,
         status: 'PENDING',
         metadata: {
           subtotal: subtotal.toString(),
           serviceFeeRate: SERVICE_FEE_RATE,
           serviceFee: serviceFee.toString(),
+          addOnsSubtotal: addOnsSubtotal.toString(),
+          addOnsServiceFee: addOnsServiceFee.toString(),
         },
       },
     });
@@ -147,9 +161,9 @@ export class PaymentService {
 
     const pref = await this.gateway.createPreference({
       externalReference: payment.id,
-      title: 'Entradas Clickpass',
-      quantity: dto.quantity,
-      unitPrice,
+      title: lockItems.length > 0 ? 'Entradas + consumiciones Clickpass' : 'Entradas Clickpass',
+      quantity: 1,
+      unitPrice: Number(amount),
       currency: eventDate.currency,
       payerEmail,
       backUrls: {
@@ -215,7 +229,13 @@ export class PaymentService {
     }
 
     if (gp.status === 'rejected') {
-      await this.releaseRejected(payment.id, payment.eventDateId, payment.ticketsCount, payment.reservationKey);
+      await this.releaseRejected(
+        payment.id,
+        payment.eventDateId,
+        payment.ticketsCount,
+        payment.reservationKey,
+        payment.items as { productId: string; quantity: number }[] | null,
+      );
       this.logger.log(`Pago ${payment.id} rechazado → cupo liberado`);
       return { ok: true, status: 'FAILED' };
     }
@@ -242,6 +262,7 @@ export class PaymentService {
     eventDateId: string,
     ticketsCount: number,
     reservationKey: string,
+    items: { productId: string; quantity: number }[] | null,
   ) {
     await this.prisma.$transaction([
       this.prisma.payment.update({
@@ -257,6 +278,14 @@ export class PaymentService {
             "version" = "version" + 1
         WHERE "id" = ${eventDateId}`,
       this.prisma.reservationLock.deleteMany({ where: { idempotencyKey: reservationKey } }),
+      // Devolver el stock de las consumiciones elegidas, si había.
+      ...(items ?? []).map((item) =>
+        this.prisma.$executeRaw`
+          UPDATE "clickpass_event"."Product"
+          SET "sold" = GREATEST("sold" - ${item.quantity}, 0),
+              "version" = "version" + 1
+          WHERE "id" = ${item.productId}`,
+      ),
     ]);
   }
 

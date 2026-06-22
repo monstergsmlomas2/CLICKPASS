@@ -11,6 +11,8 @@ import { CreateEventDto, CreateEventDateDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { AddEventDateDto } from './dto/add-event-date.dto';
 import { ImportRow } from './dto/import-event.dto';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import { Role } from '@clickpass/shared';
 import { EventStatus, Prisma, RefundPolicy } from '@prisma/client';
 
@@ -256,6 +258,74 @@ export class EventService {
     }
 
     return { created: eventIds.length, skipped: rows.length - validRows.length, eventIds };
+  }
+
+  /** Combos de bebida/comida activos del evento, para mostrar en el checkout del comprador. */
+  async listActiveProducts(eventId: string) {
+    return this.prisma.product.findMany({
+      where: { eventId, active: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /** Todos los combos del evento (incl. inactivos), para el panel del organizador. */
+  async listAllProducts(eventId: string, user: { sub: string; role: Role }) {
+    await this.requireOwned(eventId, user);
+    return this.prisma.product.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async addProduct(eventId: string, user: { sub: string; role: Role }, dto: CreateProductDto) {
+    await this.requireOwned(eventId, user);
+    return this.prisma.product.create({
+      data: {
+        eventId,
+        name: dto.name,
+        description: dto.description,
+        price: new Prisma.Decimal(dto.price),
+        currency: dto.currency ?? 'ARS',
+        stock: dto.stock,
+      },
+    });
+  }
+
+  async updateProduct(
+    eventId: string,
+    productId: string,
+    user: { sub: string; role: Role },
+    dto: UpdateProductDto,
+  ) {
+    await this.requireOwned(eventId, user);
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product || product.eventId !== eventId) {
+      throw new NotFoundException('Combo no encontrado');
+    }
+    return this.prisma.product.update({
+      where: { id: productId },
+      data: {
+        name: dto.name,
+        description: dto.description,
+        price: dto.price != null ? new Prisma.Decimal(dto.price) : undefined,
+        stock: dto.stock,
+        active: dto.active,
+      },
+    });
+  }
+
+  /** Borra el combo solo si nunca se vendió; si ya tiene ventas, se desactiva para no romper pedidos pasados. */
+  async deleteProduct(eventId: string, productId: string, user: { sub: string; role: Role }) {
+    await this.requireOwned(eventId, user);
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product || product.eventId !== eventId) {
+      throw new NotFoundException('Combo no encontrado');
+    }
+    if (product.sold > 0) {
+      return this.prisma.product.update({ where: { id: productId }, data: { active: false } });
+    }
+    await this.prisma.product.delete({ where: { id: productId } });
+    return { deleted: true };
   }
 
   private async requireOwned(id: string, user: { sub: string; role: Role }) {

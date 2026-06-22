@@ -25,6 +25,18 @@ export interface EventItem {
   dates: EventDate[];
 }
 
+export interface Product {
+  id: string;
+  eventId: string;
+  name: string;
+  description?: string | null;
+  price: string;
+  currency: string;
+  stock: number | null;
+  sold: number;
+  active: boolean;
+}
+
 export interface Ticket {
   id: string;
   eventDateId: string;

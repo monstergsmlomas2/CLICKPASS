@@ -2,19 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EventItem } from '../lib/types';
+import type { EventItem, Product } from '../lib/types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
 import { formatMoney, formatDate } from '../lib/format';
 
 type Stage = 'select' | 'pay' | 'done';
 
-export function BuyBox({ event }: { event: EventItem }) {
+export function BuyBox({ event, products = [] }: { event: EventItem; products?: Product[] }) {
   const router = useRouter();
   const user = useAuth((s) => s.user);
   const activeDates = event.dates.filter((d) => d.status !== 'CANCELLED');
   const [dateId, setDateId] = useState(activeDates[0]?.id ?? '');
   const [qty, setQty] = useState(1);
+  const [itemQty, setItemQty] = useState<Record<string, number>>({});
   const [stage, setStage] = useState<Stage>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,18 @@ export function BuyBox({ event }: { event: EventItem }) {
     simulated: boolean;
     amount: string;
   } | null>(null);
+
+  const selectedItems = products
+    .map((p) => ({ product: p, quantity: itemQty[p.id] ?? 0 }))
+    .filter((i) => i.quantity > 0);
+  const addOnsSubtotal = selectedItems.reduce(
+    (acc, i) => acc + Number(i.product.price) * i.quantity,
+    0,
+  );
+
+  function setProductQty(id: string, value: number) {
+    setItemQty((q) => ({ ...q, [id]: Math.max(0, value) }));
+  }
 
   const selected = activeDates.find((d) => d.id === dateId);
   const remaining = selected ? selected.capacity - selected.ticketsSold : 0;
@@ -44,11 +57,12 @@ export function BuyBox({ event }: { event: EventItem }) {
         ? {}
         : { guestName: guestName.trim(), guestEmail: guestEmail.trim(), guestPhone: guestPhone.trim() || undefined };
       const reservationKey = crypto.randomUUID();
+      const items = selectedItems.map((i) => ({ productId: i.product.id, quantity: i.quantity }));
       await api('/tickets/reserve', {
         method: 'POST',
         auth: true,
         headers: { 'Idempotency-Key': reservationKey },
-        body: { eventDateId: dateId, quantity: qty, ...guestFields },
+        body: { eventDateId: dateId, quantity: qty, ...(items.length ? { items } : {}), ...guestFields },
       });
       const res = await api<{
         paymentId: string;
@@ -121,6 +135,9 @@ export function BuyBox({ event }: { event: EventItem }) {
           <h3 className="mt-1 font-display text-2xl text-fg" style={{ fontWeight: 400 }}>Confirmá tu pago</h3>
           <dl className="mt-5 space-y-2 font-mono text-sm">
             <Row label="Entradas" value={`${qty}`} />
+            {selectedItems.map((i) => (
+              <Row key={i.product.id} label={i.product.name} value={`x${i.quantity}`} />
+            ))}
             {Number(checkout.amount) > 0 && (
               <>
                 <Row label="Subtotal" value={formatMoney(Number(checkout.amount) / 1.15)} />
@@ -189,6 +206,51 @@ export function BuyBox({ event }: { event: EventItem }) {
               {remaining > 0 ? `${remaining} disponibles` : 'Agotado'}
             </span>
           </div>
+
+          {products.length > 0 && (
+            <div className="mt-5">
+              <label className="block font-mono text-xs uppercase tracking-widest text-muted">
+                Consumiciones (opcional)
+              </label>
+              <div className="mt-2 space-y-2">
+                {products.map((p) => {
+                  const left = p.stock != null ? p.stock - p.sold : null;
+                  const out = left != null && left <= 0;
+                  const q = itemQty[p.id] ?? 0;
+                  return (
+                    <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-line px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium text-fg">{p.name}</p>
+                        <p className="font-mono text-xs text-emerald">{formatMoney(p.price)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setProductQty(p.id, q - 1)}
+                          disabled={q <= 0}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg hover:bg-lime/10 disabled:opacity-30"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center font-mono text-sm text-fg">{q}</span>
+                        <button
+                          onClick={() => setProductQty(p.id, q + 1)}
+                          disabled={out || (left != null && q >= left)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg hover:bg-lime/10 disabled:opacity-30"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {addOnsSubtotal > 0 && (
+                <p className="mt-2 text-right text-xs text-muted">
+                  Consumiciones: {formatMoney(addOnsSubtotal)} + 15% costo por servicio
+                </p>
+              )}
+            </div>
+          )}
 
           {!user && (
             <div className="mt-5 space-y-2.5">
