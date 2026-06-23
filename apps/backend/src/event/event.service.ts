@@ -13,6 +13,7 @@ import { AddEventDateDto } from './dto/add-event-date.dto';
 import { ImportRow } from './dto/import-event.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { UpdateEventDateDto } from './dto/update-event-date.dto';
 import { Role } from '@clickpass/shared';
 import { EventStatus, Prisma, RefundPolicy } from '@prisma/client';
 
@@ -114,6 +115,66 @@ export class EventService {
         currency: dto.currency ?? 'ARS',
       },
     });
+  }
+
+  /** Reprograma o ajusta cupo/precio de una función puntual (no toca las demás). */
+  async updateDate(
+    eventId: string,
+    dateId: string,
+    user: { sub: string; role: Role },
+    dto: UpdateEventDateDto,
+  ) {
+    await this.requireOwned(eventId, user);
+    const date = await this.prisma.eventDate.findUnique({ where: { id: dateId } });
+    if (!date || date.eventId !== eventId) {
+      throw new NotFoundException('Función no encontrada');
+    }
+    if (date.status === 'CANCELLED') {
+      throw new BadRequestException('Esta función está cancelada');
+    }
+    const startDate = dto.startDate ? new Date(dto.startDate) : date.startDate;
+    const endDate = dto.endDate ? new Date(dto.endDate) : date.endDate;
+    if (endDate.getTime() <= startDate.getTime()) {
+      throw new BadRequestException('endDate debe ser posterior a startDate');
+    }
+    if (dto.capacity != null && dto.capacity < date.ticketsSold) {
+      throw new BadRequestException(
+        `El cupo no puede ser menor a las ${date.ticketsSold} entradas ya vendidas`,
+      );
+    }
+    return this.prisma.eventDate.update({
+      where: { id: dateId },
+      data: {
+        startDate,
+        endDate,
+        capacity: dto.capacity,
+        price: dto.price != null ? new Prisma.Decimal(dto.price) : undefined,
+      },
+    });
+  }
+
+  /** Cancela una sola función del evento (no todo el evento). */
+  async cancelDate(eventId: string, dateId: string, user: { sub: string; role: Role }) {
+    await this.requireOwned(eventId, user);
+    const date = await this.prisma.eventDate.findUnique({ where: { id: dateId } });
+    if (!date || date.eventId !== eventId) {
+      throw new NotFoundException('Función no encontrada');
+    }
+    if (date.status === 'CANCELLED') {
+      throw new BadRequestException('Esta función ya está cancelada');
+    }
+    const updated = await this.prisma.eventDate.update({
+      where: { id: dateId },
+      data: { status: 'CANCELLED' },
+    });
+
+    this.emitter.emit(DomainEvents.EVENT_CANCELLED, {
+      eventId,
+      eventTitle: (await this.prisma.event.findUnique({ where: { id: eventId } }))?.title ?? '',
+      eventDateIds: [dateId],
+    } satisfies EventCancelledPayload);
+
+    return updated;
   }
 
   async publish(id: string, user: { sub: string; role: Role }) {
@@ -284,6 +345,7 @@ export class EventService {
         eventId,
         name: dto.name,
         description: dto.description,
+        imageUrl: dto.imageUrl,
         price: new Prisma.Decimal(dto.price),
         currency: dto.currency ?? 'ARS',
         stock: dto.stock,
@@ -307,6 +369,7 @@ export class EventService {
       data: {
         name: dto.name,
         description: dto.description,
+        imageUrl: dto.imageUrl,
         price: dto.price != null ? new Prisma.Decimal(dto.price) : undefined,
         stock: dto.stock,
         active: dto.active,

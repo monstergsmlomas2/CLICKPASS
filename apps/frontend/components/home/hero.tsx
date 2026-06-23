@@ -101,7 +101,9 @@ export function Hero({ event }: { event: EventItem | null }) {
               </span>
               <p className="truncate font-display font-semibold text-fg">{event.title}</p>
               {minPrice !== null && (
-                <span className="font-mono text-sm text-muted">desde {formatMoney(minPrice)}</span>
+                <span className="font-mono text-sm text-muted">
+                  {minPrice > 0 ? `desde ${formatMoney(minPrice)}` : 'Gratis'}
+                </span>
               )}
             </div>
           </Link>

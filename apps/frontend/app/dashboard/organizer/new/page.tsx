@@ -10,7 +10,9 @@ import { uploadEventImage } from '../../../../lib/cloudinary';
 
 interface DateRow {
   startDate: string;
+  startTime: string;
   endDate: string;
+  endTime: string;
   capacity: string;
   price: string;
   currency: string;
@@ -19,16 +21,19 @@ interface DateRow {
 const CATEGORIES = ['musica', 'teatro', 'deporte', 'festival', 'fiesta'];
 
 function emptyDate(): DateRow {
-  return { startDate: '', endDate: '', capacity: '', price: '', currency: 'ARS' };
+  return { startDate: '', startTime: '', endDate: '', endTime: '', capacity: '', price: '', currency: 'ARS' };
 }
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** Date → string para <input datetime-local> ("YYYY-MM-DDTHH:mm"), en hora local. */
-function toLocalInput(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** Date → { date, time } para inputs <input type="date"> / <input type="time"> separados, en hora local. */
+function toLocalParts(d: Date): { date: string; time: string } {
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
 }
 
 export default function NewEventPage() {
@@ -50,8 +55,10 @@ export default function NewEventPage() {
   const [dates, setDates] = useState<DateRow[]>([emptyDate()]);
   const [uploadingField, setUploadingField] = useState<'bannerUrl' | 'coverUrl' | null>(null);
   const [rep, setRep] = useState({
-    start: '',
-    end: '',
+    startDate: '',
+    startTime: '',
+    endDate: '',
+    endTime: '',
     frequency: 'weekly',
     until: '',
     capacity: '',
@@ -61,12 +68,12 @@ export default function NewEventPage() {
   /** Genera funciones repetidas (semanal/quincenal/mensual) hasta la fecha tope. */
   function generateRepeated() {
     setError(null);
-    if (!rep.start || !rep.end || !rep.until || !rep.capacity || !rep.price) {
+    if (!rep.startDate || !rep.startTime || !rep.endDate || !rep.endTime || !rep.until || !rep.capacity || !rep.price) {
       setError('Para repetir, completá inicio, fin, cupo, precio y la fecha tope.');
       return;
     }
-    const startD = new Date(rep.start);
-    const endD = new Date(rep.end);
+    const startD = new Date(`${rep.startDate}T${rep.startTime}`);
+    const endD = new Date(`${rep.endDate}T${rep.endTime}`);
     const duration = endD.getTime() - startD.getTime();
     if (duration <= 0) {
       setError('El horario de fin debe ser posterior al de inicio.');
@@ -83,9 +90,13 @@ export default function NewEventPage() {
     let guard = 0;
     while (cur <= untilD && guard < 200) {
       const e = new Date(cur.getTime() + duration);
+      const start = toLocalParts(cur);
+      const end = toLocalParts(e);
       rows.push({
-        startDate: toLocalInput(cur),
-        endDate: toLocalInput(e),
+        startDate: start.date,
+        startTime: start.time,
+        endDate: end.date,
+        endTime: end.time,
         capacity: rep.capacity,
         price: rep.price,
         currency: 'ARS',
@@ -143,8 +154,8 @@ export default function NewEventPage() {
           ...(bannerUrl ? { bannerUrl } : {}),
           ...(coverUrl ? { coverUrl } : {}),
           dates: dates.map((d) => ({
-            startDate: new Date(d.startDate).toISOString(),
-            endDate: new Date(d.endDate).toISOString(),
+            startDate: new Date(`${d.startDate}T${d.startTime}`).toISOString(),
+            endDate: new Date(`${d.endDate}T${d.endTime}`).toISOString(),
             capacity: Number(d.capacity),
             price: Number(d.price),
             currency: d.currency,
@@ -265,21 +276,39 @@ export default function NewEventPage() {
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="text-xs text-muted">Primera función — inicio</span>
+                <span className="text-xs text-muted">Primera función — fecha inicio</span>
                 <input
-                  type="datetime-local"
+                  type="date"
                   className="field mt-1"
-                  value={rep.start}
-                  onChange={(e) => setRep({ ...rep, start: e.target.value })}
+                  value={rep.startDate}
+                  onChange={(e) => setRep({ ...rep, startDate: e.target.value })}
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-muted">Primera función — fin</span>
+                <span className="text-xs text-muted">Hora inicio</span>
                 <input
-                  type="datetime-local"
+                  type="time"
                   className="field mt-1"
-                  value={rep.end}
-                  onChange={(e) => setRep({ ...rep, end: e.target.value })}
+                  value={rep.startTime}
+                  onChange={(e) => setRep({ ...rep, startTime: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Fecha fin</span>
+                <input
+                  type="date"
+                  className="field mt-1"
+                  value={rep.endDate}
+                  onChange={(e) => setRep({ ...rep, endDate: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted">Hora fin</span>
+                <input
+                  type="time"
+                  className="field mt-1"
+                  value={rep.endTime}
+                  onChange={(e) => setRep({ ...rep, endTime: e.target.value })}
                 />
               </label>
               <label className="block">
@@ -334,13 +363,15 @@ export default function NewEventPage() {
           </details>
 
           <div className="mt-3 space-y-3">
-            {dates.map((d, i) => (
+            {dates.map((d, i) => {
+              const isFree = d.price === '0';
+              return (
               <div key={i} className="glass space-y-3 p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
-                    <span className="text-xs text-muted">Inicio</span>
+                    <span className="text-xs text-muted">Fecha inicio</span>
                     <input
-                      type="datetime-local"
+                      type="date"
                       required
                       className="field mt-1"
                       value={d.startDate}
@@ -348,13 +379,33 @@ export default function NewEventPage() {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs text-muted">Fin</span>
+                    <span className="text-xs text-muted">Hora inicio</span>
                     <input
-                      type="datetime-local"
+                      type="time"
+                      required
+                      className="field mt-1"
+                      value={d.startTime}
+                      onChange={(e) => updateDate(i, { startTime: e.target.value })}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-muted">Fecha fin</span>
+                    <input
+                      type="date"
                       required
                       className="field mt-1"
                       value={d.endDate}
                       onChange={(e) => updateDate(i, { endDate: e.target.value })}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-muted">Hora fin</span>
+                    <input
+                      type="time"
+                      required
+                      className="field mt-1"
+                      value={d.endTime}
+                      onChange={(e) => updateDate(i, { endTime: e.target.value })}
                     />
                   </label>
                 </div>
@@ -371,15 +422,29 @@ export default function NewEventPage() {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs text-muted">Precio (ARS)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      required
-                      className="field mt-1"
-                      value={d.price}
-                      onChange={(e) => updateDate(i, { price: e.target.value })}
-                    />
+                    <span className="flex items-center justify-between text-xs text-muted">
+                      Precio (ARS)
+                      <span className="flex items-center gap-1 font-normal">
+                        <input
+                          type="checkbox"
+                          checked={isFree}
+                          onChange={(e) => updateDate(i, { price: e.target.checked ? '0' : '' })}
+                        />
+                        Es gratis
+                      </span>
+                    </span>
+                    {isFree ? (
+                      <div className="field mt-1 flex items-center text-emerald">Gratis</div>
+                    ) : (
+                      <input
+                        type="number"
+                        min={0}
+                        required
+                        className="field mt-1"
+                        value={d.price}
+                        onChange={(e) => updateDate(i, { price: e.target.value })}
+                      />
+                    )}
                   </label>
                   {dates.length > 1 && (
                     <button
@@ -393,7 +458,8 @@ export default function NewEventPage() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

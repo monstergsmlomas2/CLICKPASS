@@ -160,7 +160,7 @@ export default function UserDashboard() {
                       #{t.id.slice(0, 8).toUpperCase()}
                     </p>
                     <p className="mt-1 font-mono text-2xl font-bold text-lime">
-                      {formatMoney(t.price, t.currency)}
+                      {Number(t.price) > 0 ? formatMoney(t.price, t.currency) : 'Gratis'}
                     </p>
                   </div>
                 </div>

@@ -11,6 +11,10 @@ export class CreateProductDto {
   @MaxLength(300)
   description?: string;
 
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   price: number;

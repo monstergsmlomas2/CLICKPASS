@@ -130,6 +130,7 @@ model Product {
   event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   name        String
   description String?
+  imageUrl    String?
   price       Decimal  @db.Decimal(12, 2)
   currency    String   @default("ARS")
   stock       Int? // null = ilimitado

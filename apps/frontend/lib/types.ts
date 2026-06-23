@@ -30,6 +30,7 @@ export interface Product {
   eventId: string;
   name: string;
   description?: string | null;
+  imageUrl?: string | null;
   price: string;
   currency: string;
   stock: number | null;

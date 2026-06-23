@@ -13,6 +13,7 @@ import { EventService } from './event.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { AddEventDateDto } from './dto/add-event-date.dto';
+import { UpdateEventDateDto } from './dto/update-event-date.dto';
 import { ImportPreviewDto, ImportConfirmDto } from './dto/import-event.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -143,6 +144,29 @@ export class EventController {
     @Body() dto: AddEventDateDto,
   ) {
     return this.events.addDate(id, user, dto);
+  }
+
+  @Patch(':id/dates/:dateId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ORGANIZER, Role.ADMIN)
+  updateDate(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id') id: string,
+    @Param('dateId') dateId: string,
+    @Body() dto: UpdateEventDateDto,
+  ) {
+    return this.events.updateDate(id, dateId, user, dto);
+  }
+
+  @Post(':id/dates/:dateId/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ORGANIZER, Role.ADMIN)
+  cancelDate(
+    @CurrentUser() user: JwtAccessPayload,
+    @Param('id') id: string,
+    @Param('dateId') dateId: string,
+  ) {
+    return this.events.cancelDate(id, dateId, user);
   }
 
   @Post(':id/publish')

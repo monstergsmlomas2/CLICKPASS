@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { Beer } from 'lucide-react';
 import type { EventItem, Product } from '../lib/types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/store';
@@ -144,7 +146,7 @@ export function BuyBox({ event, products = [] }: { event: EventItem; products?: 
                 <Row label="Costo por servicio (15%)" value={formatMoney(Number(checkout.amount) - Number(checkout.amount) / 1.15)} />
               </>
             )}
-            <Row label="Total" value={formatMoney(checkout.amount)} strong />
+            <Row label="Total" value={Number(checkout.amount) > 0 ? formatMoney(checkout.amount) : 'Gratis'} strong />
           </dl>
           {checkout.simulated && (
             <p className="mt-4 rounded-xl border border-line bg-surface/50 px-3 py-2 text-xs text-muted">
@@ -164,7 +166,7 @@ export function BuyBox({ event, products = [] }: { event: EventItem; products?: 
           <div className="flex items-baseline justify-between">
             <span className="font-mono text-xs uppercase tracking-widest text-muted">Precio</span>
             <span className="font-mono text-2xl font-bold text-lime">
-              {selected ? formatMoney(selected.price) : '—'}
+              {selected ? (Number(selected.price) > 0 ? formatMoney(selected.price) : 'Gratis') : '—'}
             </span>
           </div>
           {selected && Number(selected.price) > 0 && (
@@ -208,20 +210,31 @@ export function BuyBox({ event, products = [] }: { event: EventItem; products?: 
           </div>
 
           {products.length > 0 && (
-            <div className="mt-5">
-              <label className="block font-mono text-xs uppercase tracking-widest text-muted">
-                Consumiciones (opcional)
-              </label>
-              <div className="mt-2 space-y-2">
+            <div className="mt-5 rounded-2xl border border-emerald/30 bg-emerald/5 p-4">
+              <p className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-emerald">
+                <Beer size={14} /> Consumiciones
+              </p>
+              <div className="mt-3 space-y-2">
                 {products.map((p) => {
                   const left = p.stock != null ? p.stock - p.sold : null;
                   const out = left != null && left <= 0;
                   const q = itemQty[p.id] ?? 0;
                   return (
-                    <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-line px-3 py-2">
-                      <div>
-                        <p className="text-sm font-medium text-fg">{p.name}</p>
-                        <p className="font-mono text-xs text-emerald">{formatMoney(p.price)}</p>
+                    <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface/60 px-3 py-2">
+                      <div className="flex items-center gap-3">
+                        {p.imageUrl ? (
+                          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line">
+                            <Image src={p.imageUrl} alt={p.name} fill className="object-cover" />
+                          </div>
+                        ) : (
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line text-muted">
+                            <Beer size={16} />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-fg">{p.name}</p>
+                          <p className="font-mono text-xs text-emerald">{formatMoney(p.price)}</p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <button

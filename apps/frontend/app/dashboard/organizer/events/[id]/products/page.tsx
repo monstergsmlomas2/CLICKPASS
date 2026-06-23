@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Beer, Plus, Trash2, EyeOff, Eye } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowLeft, Beer, Plus, Trash2, EyeOff, Eye, ImagePlus, X } from 'lucide-react';
 import { api } from '../../../../../../lib/api';
 import { useAuth } from '../../../../../../lib/store';
 import type { Product } from '../../../../../../lib/types';
 import { formatMoney } from '../../../../../../lib/format';
+import { uploadEventImage } from '../../../../../../lib/cloudinary';
 
 function emptyForm() {
-  return { name: '', description: '', price: '', stock: '' };
+  return { name: '', description: '', price: '', stock: '', imageUrl: '' };
 }
 
 export default function EventProductsPage() {
@@ -20,6 +22,7 @@ export default function EventProductsPage() {
   const [products, setProducts] = useState<Product[] | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -34,6 +37,22 @@ export default function EventProductsPage() {
     }
     load().catch(() => setProducts([]));
   }, [accessToken, load, router]);
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const url = await uploadEventImage(file);
+      setForm((f) => ({ ...f, imageUrl: url }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo subir la imagen');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function createProduct(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +69,7 @@ export default function EventProductsPage() {
         body: {
           name: form.name.trim(),
           description: form.description.trim() || undefined,
+          imageUrl: form.imageUrl || undefined,
           price: Number(form.price),
           stock: form.stock ? Number(form.stock) : undefined,
         },
@@ -107,12 +127,32 @@ export default function EventProductsPage() {
       </p>
 
       <form onSubmit={createProduct} className="glass mt-8 space-y-3 p-5">
-        <input
-          className="field"
-          placeholder="Nombre (ej: Cerveza en lata 6x4)"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
+        <div className="flex items-center gap-3">
+          {form.imageUrl ? (
+            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-line">
+              <Image src={form.imageUrl} alt="" fill className="object-cover" />
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, imageUrl: '' }))}
+                className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-night/80 text-fg"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ) : (
+            <label className="flex h-16 w-16 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-line text-muted hover:border-emerald/40 hover:text-emerald transition-colors">
+              <input type="file" accept="image/*" className="hidden" onChange={onPickImage} disabled={uploading} />
+              <ImagePlus size={18} />
+              <span className="text-[10px]">{uploading ? '...' : 'Foto'}</span>
+            </label>
+          )}
+          <input
+            className="field flex-1"
+            placeholder="Nombre (ej: Cerveza en lata 6x4)"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </div>
         <input
           className="field"
           placeholder="Descripción (opcional)"
@@ -157,12 +197,23 @@ export default function EventProductsPage() {
         <div className="mt-4 space-y-3">
           {products.map((p) => (
             <div key={p.id} className="glass flex items-center justify-between gap-3 px-5 py-4">
-              <div className={p.active ? '' : 'opacity-50'}>
-                <p className="font-medium text-fg">{p.name}</p>
-                <p className="font-mono text-xs text-muted">
-                  {formatMoney(p.price)} · {p.stock != null ? `${p.stock - p.sold}/${p.stock} disponibles` : 'stock ilimitado'}
-                  {!p.active && ' · desactivado'}
-                </p>
+              <div className={`flex items-center gap-3 ${p.active ? '' : 'opacity-50'}`}>
+                {p.imageUrl ? (
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-line">
+                    <Image src={p.imageUrl} alt="" fill className="object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line text-muted">
+                    <Beer size={18} />
+                  </div>
+                )}
+                <div>
+                  <p className="font-medium text-fg">{p.name}</p>
+                  <p className="font-mono text-xs text-muted">
+                    {formatMoney(p.price)} · {p.stock != null ? `${p.stock - p.sold}/${p.stock} disponibles` : 'stock ilimitado'}
+                    {!p.active && ' · desactivado'}
+                  </p>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button
