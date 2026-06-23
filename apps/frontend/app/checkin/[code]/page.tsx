@@ -8,7 +8,7 @@ import { api, ApiError } from '../../../lib/api';
 import { useAuth } from '../../../lib/store';
 
 type Result =
-  | { kind: 'ok'; eventTitle: string; usedAt: string }
+  | { kind: 'ok'; eventTitle: string; usedAt: string; attendeeName: string | null; attendeeEmail: string | null }
   | { kind: 'error'; message: string };
 
 export default function CheckInPage() {
@@ -24,11 +24,20 @@ export default function CheckInPage() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await api<{ ok: boolean; eventTitle: string; usedAt: string }>(
-        '/tickets/check-in',
-        { method: 'POST', auth: true, body: { qrCode: code } },
-      );
-      setResult({ kind: 'ok', eventTitle: res.eventTitle, usedAt: res.usedAt });
+      const res = await api<{
+        ok: boolean;
+        eventTitle: string;
+        usedAt: string;
+        attendeeName: string | null;
+        attendeeEmail: string | null;
+      }>('/tickets/check-in', { method: 'POST', auth: true, body: { qrCode: code } });
+      setResult({
+        kind: 'ok',
+        eventTitle: res.eventTitle,
+        usedAt: res.usedAt,
+        attendeeName: res.attendeeName,
+        attendeeEmail: res.attendeeEmail,
+      });
     } catch (err) {
       setResult({
         kind: 'error',
@@ -64,7 +73,14 @@ export default function CheckInPage() {
           <CheckCircle2 className="mx-auto text-emerald" size={40} />
           <h2 className="mt-3 font-display text-xl font-semibold text-fg">¡Entrada válida!</h2>
           <p className="mt-1 text-sm text-muted">{result.eventTitle}</p>
-          <p className="mt-1 font-mono text-xs text-muted">
+          {(result.attendeeName || result.attendeeEmail) && (
+            <div className="mt-3 rounded-xl border border-line bg-surface/60 px-4 py-3 text-left">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-emerald">Comprador</p>
+              {result.attendeeName && <p className="mt-1 text-sm font-medium text-fg">{result.attendeeName}</p>}
+              {result.attendeeEmail && <p className="font-mono text-xs text-muted">{result.attendeeEmail}</p>}
+            </div>
+          )}
+          <p className="mt-3 font-mono text-xs text-muted">
             Marcada como usada {new Date(result.usedAt).toLocaleString('es-AR')}
           </p>
           <button onClick={() => router.refresh()} className="btn-outline mt-5 w-full text-sm">

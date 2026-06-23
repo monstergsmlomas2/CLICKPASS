@@ -41,6 +41,7 @@ export default function UserDashboard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [upgrading, setUpgrading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [refundNotices, setRefundNotices] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const [t, p] = await Promise.all([
@@ -61,13 +62,16 @@ export default function UserDashboard() {
 
   async function requestRefund(paymentId: string) {
     setBusy(paymentId);
-    setNotice(null);
+    setRefundNotices((n) => ({ ...n, [paymentId]: '' }));
     try {
       await api('/refunds/request', { method: 'POST', auth: true, body: { paymentId } });
-      setNotice('Reembolso solicitado. Te avisaremos por email.');
+      setRefundNotices((n) => ({ ...n, [paymentId]: 'Reembolso solicitado. Te avisaremos por email.' }));
       await load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'No se pudo solicitar el reembolso');
+      setRefundNotices((n) => ({
+        ...n,
+        [paymentId]: err instanceof Error ? err.message : 'No se pudo solicitar el reembolso',
+      }));
     } finally {
       setBusy(null);
     }
@@ -179,6 +183,11 @@ export default function UserDashboard() {
                     </button>
                   )}
                 </div>
+                {payment && refundNotices[payment.id] && (
+                  <p className="border-t border-line px-6 py-3 text-sm text-cyan">
+                    {refundNotices[payment.id]}
+                  </p>
+                )}
               </div>
             );
           })}

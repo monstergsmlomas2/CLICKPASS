@@ -302,11 +302,23 @@ export class TicketService {
       data: { status: 'USED', usedAt: new Date(), checkedInBy: actor.sub },
     });
 
+    let attendeeName = ticket.attendeeName;
+    let attendeeEmail = ticket.attendeeEmail;
+    if (ticket.userId) {
+      const buyer = await this.prisma.user.findUnique({ where: { id: ticket.userId } });
+      if (buyer) {
+        attendeeName = `${buyer.firstName} ${buyer.lastName}`;
+        attendeeEmail = buyer.email;
+      }
+    }
+
     return {
       ok: true,
       ticketId: updated.id,
       eventTitle: event.title,
       usedAt: updated.usedAt,
+      attendeeName,
+      attendeeEmail,
     };
   }
 }

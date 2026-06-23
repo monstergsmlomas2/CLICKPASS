@@ -7,6 +7,7 @@ import { ArrowLeft, Save, Ban, Plus, Beer, CalendarX2 } from 'lucide-react';
 import { api } from '../../../../../../lib/api';
 import { useAuth } from '../../../../../../lib/store';
 import type { EventItem } from '../../../../../../lib/types';
+import { ConfirmDialog } from '../../../../../../components/confirm-dialog';
 
 const CATEGORIES = ['musica', 'teatro', 'deporte', 'festival', 'fiesta'];
 
@@ -54,6 +55,8 @@ export default function EditEventPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmCancelDateId, setConfirmCancelDateId] = useState<string | null>(null);
+  const [confirmCancelEvent, setConfirmCancelEvent] = useState(false);
 
   const load = useCallback(async () => {
     const data = await api<EventItem>(`/events/${id}`, { auth: true });
@@ -138,7 +141,7 @@ export default function EditEventPage() {
   }
 
   async function cancelDate(dateId: string) {
-    if (!confirm('¿Cancelar esta función? Se reembolsa el 100% a quienes ya compraron, sin afectar al resto del evento.')) return;
+    setConfirmCancelDateId(null);
     setLoading(true);
     setError(null);
     try {
@@ -180,12 +183,7 @@ export default function EditEventPage() {
   }
 
   async function cancelEvent() {
-    if (
-      !confirm(
-        '¿Seguro? Se cancela todo el evento, se reembolsa el 100% a los compradores (incluido el costo de servicio) y se te aplica una multa por la comisión y el costo de servicio perdidos.',
-      )
-    )
-      return;
+    setConfirmCancelEvent(false);
     setLoading(true);
     setError(null);
     try {
@@ -220,7 +218,7 @@ export default function EditEventPage() {
           <Beer size={14} /> Combos
         </Link>
         {event.status !== 'CANCELLED' && (
-          <button onClick={cancelEvent} disabled={loading} className="btn-outline flex items-center gap-1.5 text-sm !px-4 !py-2 disabled:opacity-50">
+          <button onClick={() => setConfirmCancelEvent(true)} disabled={loading} className="btn-outline flex items-center gap-1.5 text-sm !px-4 !py-2 disabled:opacity-50">
             <Ban size={14} /> Cancelar todo el evento
           </button>
         )}
@@ -362,7 +360,7 @@ export default function EditEventPage() {
                     <Save size={14} /> Guardar función
                   </button>
                   <button
-                    onClick={() => cancelDate(d.id)}
+                    onClick={() => setConfirmCancelDateId(d.id)}
                     disabled={loading}
                     className="flex items-center gap-1.5 rounded-xl border border-line px-4 text-sm text-muted hover:border-cyan/40 hover:text-cyan transition-colors disabled:opacity-50"
                   >
@@ -425,6 +423,23 @@ export default function EditEventPage() {
           <Plus size={14} /> Agregar función
         </button>
       </form>
+
+      <ConfirmDialog
+        open={confirmCancelDateId !== null}
+        title="¿Cancelar esta función?"
+        message="Se reembolsa el 100% a quienes ya compraron esta función, sin afectar al resto del evento. No se borra: queda marcada como cancelada."
+        confirmLabel="Sí, cancelar función"
+        onConfirm={() => confirmCancelDateId && cancelDate(confirmCancelDateId)}
+        onCancel={() => setConfirmCancelDateId(null)}
+      />
+      <ConfirmDialog
+        open={confirmCancelEvent}
+        title="¿Cancelar todo el evento?"
+        message="Se reembolsa el 100% a los compradores (incluido el costo de servicio) y se te aplica una multa por la comisión y el costo de servicio perdidos. No se borra: queda marcado como CANCELADO."
+        confirmLabel="Sí, cancelar evento"
+        onConfirm={cancelEvent}
+        onCancel={() => setConfirmCancelEvent(false)}
+      />
     </div>
   );
 }

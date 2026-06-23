@@ -10,6 +10,7 @@ import { useAuth } from '../../../../../../lib/store';
 import type { Product } from '../../../../../../lib/types';
 import { formatMoney } from '../../../../../../lib/format';
 import { uploadEventImage } from '../../../../../../lib/cloudinary';
+import { ConfirmDialog } from '../../../../../../components/confirm-dialog';
 
 function emptyForm() {
   return { name: '', description: '', price: '', stock: '', imageUrl: '' };
@@ -24,6 +25,7 @@ export default function EventProductsPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<Product | null>(null);
 
   const load = useCallback(async () => {
     const data = await api<Product[]>(`/events/${id}/products/manage`, { auth: true });
@@ -100,7 +102,7 @@ export default function EventProductsPage() {
   }
 
   async function remove(p: Product) {
-    if (!confirm(`¿Borrar "${p.name}"? Si ya tuvo ventas, se desactiva en vez de borrarse.`)) return;
+    setConfirmRemove(null);
     setLoading(true);
     try {
       await api(`/events/${id}/products/${p.id}`, { method: 'DELETE', auth: true });
@@ -225,7 +227,7 @@ export default function EventProductsPage() {
                   {p.active ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
                 <button
-                  onClick={() => remove(p)}
+                  onClick={() => setConfirmRemove(p)}
                   disabled={loading}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-muted hover:text-cyan hover:border-cyan/30 transition-colors disabled:opacity-50"
                   title="Borrar"
@@ -237,6 +239,15 @@ export default function EventProductsPage() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        title={`¿Borrar "${confirmRemove?.name ?? ''}"?`}
+        message="Si este combo ya tuvo ventas, se desactiva en vez de borrarse, para no afectar pedidos ya confirmados."
+        confirmLabel="Sí, borrar"
+        onConfirm={() => confirmRemove && remove(confirmRemove)}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }

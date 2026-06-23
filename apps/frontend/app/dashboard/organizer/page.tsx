@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Store, Upload, Eye, Plus, Megaphone, Ban, Beer, Pencil } from 'lucide-react';
+import { Store, Upload, Eye, Plus, Megaphone, Ban, Beer, Pencil, Camera } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/store';
 import type { EventItem } from '../../../lib/types';
 import { formatMoney, formatDateShort } from '../../../lib/format';
+import { ConfirmDialog } from '../../../components/confirm-dialog';
 
 const STATUS_STYLE: Record<string, string> = {
   DRAFT: 'text-muted border-line',
@@ -38,6 +39,7 @@ export default function OrganizerDashboard() {
   const [penalties, setPenalties] = useState<Penalty[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [eventsData, penaltiesData] = await Promise.all([
@@ -77,12 +79,7 @@ export default function OrganizerDashboard() {
   }
 
   async function cancel(id: string) {
-    if (
-      !confirm(
-        '¿Seguro? Se cancela el evento, se reembolsa el 100% a los compradores (incluido el costo de servicio) y se te aplica una multa por la comisión y el costo de servicio perdidos. Se descuenta de tu próxima liquidación.',
-      )
-    )
-      return;
+    setConfirmCancelId(null);
     setBusy(id);
     setError(null);
     try {
@@ -104,9 +101,14 @@ export default function OrganizerDashboard() {
           </span>
           <h1 className="mt-1 font-display text-4xl font-bold text-fg">Tu panel</h1>
         </div>
-        <Link href="/dashboard/organizer/new" className="btn-neon text-sm !px-5 !py-2">
-          <Plus size={16} /> Crear evento
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/dashboard/organizer/scan" className="btn-outline text-sm !px-5 !py-2">
+            <Camera size={16} /> Escanear entradas
+          </Link>
+          <Link href="/dashboard/organizer/new" className="btn-neon text-sm !px-5 !py-2">
+            <Plus size={16} /> Crear evento
+          </Link>
+        </div>
       </div>
 
       {pendingPenalties.length > 0 && (
@@ -180,7 +182,7 @@ export default function OrganizerDashboard() {
                     )}
                     {e.status !== 'CANCELLED' && (
                       <button
-                        onClick={() => cancel(e.id)}
+                        onClick={() => setConfirmCancelId(e.id)}
                         disabled={busy === e.id}
                         className="btn-outline flex items-center gap-1.5 text-sm !px-4 !py-2 disabled:opacity-50"
                       >
@@ -194,6 +196,15 @@ export default function OrganizerDashboard() {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmCancelId !== null}
+        title="¿Cancelar este evento?"
+        message="Se reembolsa el 100% a los compradores (incluido el costo de servicio) y se te aplica una multa por la comisión y el costo de servicio perdidos. No se borra: queda marcado como CANCELADO en tu panel."
+        confirmLabel="Sí, cancelar evento"
+        onConfirm={() => confirmCancelId && cancel(confirmCancelId)}
+        onCancel={() => setConfirmCancelId(null)}
+      />
     </div>
   );
 }
