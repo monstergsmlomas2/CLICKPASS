@@ -3,9 +3,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ScanLine, CheckCircle2, XCircle, Camera } from 'lucide-react';
+import { ArrowLeft, ScanLine, CheckCircle2, XCircle, Camera, Keyboard } from 'lucide-react';
 import { api, ApiError } from '../../../../lib/api';
 import { useAuth } from '../../../../lib/store';
+
+/** Recorte cuadrado de hasta el 70% del lado más chico del visor, para que la caja
+ * de escaneo siempre entre en pantalla sin importar el tamaño de cámara del celular. */
+function qrboxSize(viewfinderWidth: number, viewfinderHeight: number) {
+  const min = Math.min(viewfinderWidth, viewfinderHeight);
+  const size = Math.floor(min * 0.7);
+  return { width: size, height: size };
+}
+
+/** Elige la cámara trasera por nombre cuando hay varias; si no se puede listar
+ * (permiso no otorgado todavía), se delega en facingMode "environment". */
+async function pickBackCameraId(Html5Qrcode: typeof import('html5-qrcode').Html5Qrcode): Promise<string | null> {
+  try {
+    const cameras = await Html5Qrcode.getCameras();
+    if (!cameras.length) return null;
+    const back = cameras.find((c) => /back|tras|rear|environment/i.test(c.label));
+    return (back ?? cameras[cameras.length - 1]).id;
+  } catch {
+    return null;
+  }
+}
 
 type Result =
   | { kind: 'ok'; eventTitle: string; usedAt: string; attendeeName: string | null; attendeeEmail: string | null }
@@ -27,6 +48,9 @@ export default function OrganizerScanPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  const [manualCode, setManualCode] = useState('');
+  const [manualOpen, setManualOpen] = useState(false);
+  const [validating, setValidating] = useState(false);
 
   const canValidate = user?.role === 'ORGANIZER' || user?.role === 'ADMIN';
 
@@ -69,19 +93,23 @@ export default function OrganizerScanPage() {
     let instance: import('html5-qrcode').Html5Qrcode | null = null;
     let cancelled = false;
 
-    import('html5-qrcode').then(({ Html5Qrcode }) => {
+    import('html5-qrcode').then(async ({ Html5Qrcode }) => {
       if (cancelled || !containerRef.current) return;
       instance = new Html5Qrcode(containerRef.current.id);
       scannerRef.current = instance;
-      instance
-        .start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: 240 },
+      const backCameraId = await pickBackCameraId(Html5Qrcode);
+      if (cancelled) return;
+      try {
+        await instance.start(
+          backCameraId ?? { facingMode: 'environment' },
+          { fps: 10, qrbox: qrboxSize, aspectRatio: 1 },
           (decodedText) => handleDecoded(decodedText),
           () => {},
-        )
-        .then(() => setScanning(true))
-        .catch(() => setCameraError('No se pudo acceder a la cámara. Revisá los permisos del navegador.'));
+        );
+        setScanning(true);
+      } catch {
+        setCameraError('No se pudo acceder a la cámara. Revisá los permisos del navegador.');
+      }
     });
 
     return () => {
@@ -94,7 +122,20 @@ export default function OrganizerScanPage() {
 
   function scanNext() {
     busyRef.current = false;
+    setManualCode('');
+    setManualOpen(false);
     setResult(null);
+  }
+
+  async function validateManual(e: React.FormEvent) {
+    e.preventDefault();
+    if (!manualCode.trim() || validating) return;
+    setValidating(true);
+    try {
+      await handleDecoded(manualCode.trim());
+    } finally {
+      setValidating(false);
+    }
   }
 
   return (
@@ -159,6 +200,28 @@ export default function OrganizerScanPage() {
                 {scanning ? 'Apuntá la cámara al QR de la entrada' : 'Iniciando cámara…'}
               </p>
             </>
+          )}
+
+          {!manualOpen ? (
+            <button
+              onClick={() => setManualOpen(true)}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 text-sm font-medium text-muted hover:text-emerald transition-colors"
+            >
+              <Keyboard size={14} /> ¿No lee el QR? Ingresar código a mano
+            </button>
+          ) : (
+            <form onSubmit={validateManual} className="mt-4 space-y-2">
+              <input
+                className="field text-center font-mono text-sm"
+                placeholder="Código de la entrada"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value)}
+                autoFocus
+              />
+              <button type="submit" disabled={validating || !manualCode.trim()} className="btn-neon w-full text-sm disabled:opacity-50">
+                {validating ? 'Validando…' : 'Validar código'}
+              </button>
+            </form>
           )}
         </div>
       )}
