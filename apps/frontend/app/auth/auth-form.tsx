@@ -210,6 +210,15 @@ export function AuthForm({
             </>
           )}
         </p>
+
+        {!isRegister && (
+          <p className="mt-3 text-center text-xs text-muted">
+            ¿Compraste sin cuenta?{' '}
+            <Link href="/tickets/lookup" className="font-medium text-lime hover:underline">
+              Ver tus entradas por email
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

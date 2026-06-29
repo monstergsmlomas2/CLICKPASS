@@ -8,6 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 import { TicketService } from './ticket.service';
 import { ReserveTicketDto } from './dto/reserve-ticket.dto';
 import { CheckInDto } from './dto/check-in.dto';
@@ -17,6 +18,17 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAccessPayload, Role } from '@clickpass/shared';
+
+class LookupTicketsDto {
+  @IsEmail()
+  email: string;
+}
+
+class ViewTicketsDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}
 
 @Controller('tickets')
 export class TicketController {
@@ -38,6 +50,23 @@ export class TicketController {
   @UseGuards(JwtAuthGuard)
   mine(@CurrentUser() user: JwtAccessPayload) {
     return this.tickets.findByUser(user.sub);
+  }
+
+  /**
+   * Paso 1 para comprador SIN cuenta: pide un link mágico a su email para ver sus entradas.
+   * Público. Respuesta genérica (no revela si el email tiene compras).
+   */
+  @Post('lookup')
+  @HttpCode(HttpStatus.OK)
+  lookup(@Body() dto: LookupTicketsDto) {
+    return this.tickets.requestGuestTicketsLink(dto.email);
+  }
+
+  /** Paso 2 para comprador SIN cuenta: canjea el token del email y devuelve sus entradas. Público. */
+  @Post('view')
+  @HttpCode(HttpStatus.OK)
+  view(@Body() dto: ViewTicketsDto) {
+    return this.tickets.viewGuestTickets(dto.token);
   }
 
   @Post('check-in')

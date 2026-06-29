@@ -10,6 +10,7 @@ export const DomainEvents = {
   REFUND_REQUESTED: 'refund.requested',
   REFUND_LINK_REQUESTED: 'refund.link_requested',
   REFUND_COMPLETED: 'refund.completed',
+  TICKET_LINK_REQUESTED: 'ticket.link_requested',
 } as const;
 
 export interface TicketPurchasedPayload {
@@ -35,6 +36,13 @@ export interface RefundLinkRequestedPayload {
   email: string;
   confirmUrl: string;
   currency: string;
+}
+
+/** Link mágico para que un comprador sin cuenta vea sus entradas (verificación por email). */
+export interface TicketLinkRequestedPayload {
+  email: string;
+  viewUrl: string;
+  ticketCount: number;
 }
 
 export interface RefundCompletedPayload {

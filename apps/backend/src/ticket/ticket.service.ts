@@ -4,16 +4,23 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { ReserveTicketDto } from './dto/reserve-ticket.dto';
+import { DomainEvents, TicketLinkRequestedPayload } from '../common/events/domain-events';
 import { Prisma } from '@prisma/client';
 import { JwtAccessPayload, Role } from '@clickpass/shared';
 
 const RESERVATION_TTL_MIN = 5;
+
+/** Vigencia del link mágico para ver las entradas de un invitado. */
+const GUEST_TICKETS_TOKEN_TTL = '30m';
 
 @Injectable()
 export class TicketService {
@@ -22,6 +29,8 @@ export class TicketService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly jwt: JwtService,
+    private readonly emitter: EventEmitter2,
   ) {}
 
   /**
@@ -266,6 +275,101 @@ export class TicketService {
       where: { userId },
       orderBy: { reservedAt: 'desc' },
     });
+  }
+
+  /**
+   * Paso 1 (comprador SIN cuenta): pide un link mágico para ver sus entradas.
+   * Si hay entradas de invitado para ese email, se envía a esa casilla un link con
+   * token firmado (vence en 30 min). La respuesta es SIEMPRE genérica: no revela si
+   * el email tiene compras. Como el link llega al correo, solo su dueño puede verlas.
+   */
+  async requestGuestTicketsLink(email: string) {
+    const generic = {
+      ok: true,
+      message:
+        'Si encontramos entradas asociadas a ese email, te enviamos un link para verlas.',
+    };
+
+    const normalized = email.trim().toLowerCase();
+    const count = await this.prisma.ticket.count({
+      where: {
+        userId: null,
+        attendeeEmail: { equals: normalized, mode: 'insensitive' },
+        status: { in: ['CONFIRMED', 'USED', 'REFUNDED'] },
+      },
+    });
+    if (count === 0) return generic;
+
+    const token = await this.jwt.signAsync(
+      { sub: normalized, purpose: 'guest_tickets' },
+      {
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+        expiresIn: GUEST_TICKETS_TOKEN_TTL,
+      },
+    );
+
+    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    const evt: TicketLinkRequestedPayload = {
+      email: normalized,
+      viewUrl: `${frontendUrl}/tickets/view?token=${encodeURIComponent(token)}`,
+      ticketCount: count,
+    };
+    this.emitter.emit(DomainEvents.TICKET_LINK_REQUESTED, evt);
+    this.logger.log(`Link de entradas enviado a un invitado (${count} entradas)`);
+
+    return generic;
+  }
+
+  /**
+   * Paso 2 (comprador SIN cuenta): canjea el token del email y devuelve sus entradas,
+   * enriquecidas con el título y la fecha del evento para mostrarlas en la web.
+   */
+  async viewGuestTickets(token: string) {
+    let email: string;
+    try {
+      const claims = await this.jwt.verifyAsync<{ sub: string; purpose: string }>(token, {
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
+      });
+      if (claims.purpose !== 'guest_tickets') throw new Error('purpose inválido');
+      email = claims.sub;
+    } catch {
+      throw new UnauthorizedException('El link es inválido o expiró. Pedí uno nuevo.');
+    }
+
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        userId: null,
+        attendeeEmail: { equals: email, mode: 'insensitive' },
+        status: { in: ['CONFIRMED', 'USED', 'REFUNDED'] },
+      },
+      orderBy: { reservedAt: 'desc' },
+    });
+
+    // Enriquecer con título + fecha del evento (join manual entre schemas).
+    const dateIds = [...new Set(tickets.map((t) => t.eventDateId))];
+    const dates = await this.prisma.eventDate.findMany({ where: { id: { in: dateIds } } });
+    const dateById = new Map(dates.map((d) => [d.id, d]));
+    const eventIds = [...new Set(dates.map((d) => d.eventId))];
+    const events = await this.prisma.event.findMany({ where: { id: { in: eventIds } } });
+    const eventById = new Map(events.map((e) => [e.id, e]));
+
+    return {
+      email,
+      tickets: tickets.map((t) => {
+        const date = dateById.get(t.eventDateId);
+        const event = date ? eventById.get(date.eventId) : undefined;
+        return {
+          id: t.id,
+          qrCode: t.qrCode,
+          status: t.status,
+          price: t.price.toString(),
+          currency: t.currency,
+          purchaseId: t.purchaseId,
+          eventTitle: event?.title ?? 'Evento',
+          eventStartDate: date?.startDate ?? null,
+        };
+      }),
+    };
   }
 
   /**

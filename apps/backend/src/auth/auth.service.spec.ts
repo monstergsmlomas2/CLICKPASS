@@ -12,12 +12,19 @@ describe('AuthService', () => {
   let prisma: {
     user: { findUnique: jest.Mock; create: jest.Mock };
     refreshToken: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    ticket: { updateMany: jest.Mock };
+    payment: { updateMany: jest.Mock };
+    $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
     prisma = {
       user: { findUnique: jest.fn(), create: jest.fn() },
       refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      // linkGuestPurchases: adopción de compras de invitado al registrarse.
+      ticket: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      payment: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: jest.fn().mockResolvedValue([{ count: 0 }, { count: 0 }]),
     };
 
     const moduleRef = await Test.createTestingModule({

@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -23,6 +24,8 @@ const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -51,8 +54,74 @@ export class AuthService {
       },
     });
 
+    await this.linkGuestPurchases(user.id, user.email);
     const tokens = await this.issueTokens(user);
     return { ...tokens, user: this.toPublicUser(user) };
+  }
+
+  /**
+   * Registro liviano del comprador (cuenta opcional post-compra). A diferencia de
+   * `register` (pensado para organizadores), no exige apellido ni teléfono: el comprador
+   * se sumó tras comprar como invitado y queremos mínima fricción. Siempre rol USER.
+   * Al crear la cuenta, adopta las compras de invitado hechas con ese mismo email.
+   */
+  async registerBuyer(dto: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName?: string;
+    phone?: string;
+  }): Promise<AuthResponse> {
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
+    if (existing) {
+      throw new ConflictException('El email ya está registrado. Iniciá sesión.');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email.toLowerCase(),
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName ?? '',
+        phone: dto.phone,
+        role: Role.USER,
+      },
+    });
+
+    await this.linkGuestPurchases(user.id, user.email);
+    const tokens = await this.issueTokens(user);
+    return { ...tokens, user: this.toPublicUser(user) };
+  }
+
+  /**
+   * Adopta las compras hechas como invitado con este email: vincula sus tickets y pagos
+   * (userId null) a la cuenta recién creada para que aparezcan en su dashboard. Match
+   * case-insensitive porque el email de invitado se guardó tal cual lo tipeó.
+   *
+   * Nota: el registro no verifica la titularidad del email todavía, así que esto confía
+   * en que quien usa el email es su dueño (gap preexistente del sistema: falta verificación
+   * de email). Aceptable para el MVP; pendiente de endurecer con verificación.
+   */
+  private async linkGuestPurchases(userId: string, email: string): Promise<void> {
+    const match = { equals: email, mode: 'insensitive' as const };
+    const [tickets, payments] = await this.prisma.$transaction([
+      this.prisma.ticket.updateMany({
+        where: { userId: null, attendeeEmail: match },
+        data: { userId },
+      }),
+      this.prisma.payment.updateMany({
+        where: { userId: null, guestEmail: match },
+        data: { userId },
+      }),
+    ]);
+    if (tickets.count > 0 || payments.count > 0) {
+      this.logger.log(
+        `Cuenta ${userId}: adoptadas ${tickets.count} entradas y ${payments.count} compras de invitado`,
+      );
+    }
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {

@@ -8,6 +8,7 @@ import {
   TicketPurchasedPayload,
   RefundCompletedPayload,
   RefundLinkRequestedPayload,
+  TicketLinkRequestedPayload,
 } from '../common/events/domain-events';
 
 @Injectable()
@@ -90,6 +91,7 @@ export class NotificationService {
       guestBlock = `
         <hr/>
         <p>Tu número de compra es <code>${payload.paymentId}</code>. Guardalo.</p>
+        <p>¿Querés ver tus entradas online cuando quieras? <a href="${frontendUrl}/tickets/lookup">Entrá acá</a> con tu email y te enviamos un link de acceso.</p>
         <p>¿Necesitás gestionar un reembolso? <a href="${frontendUrl}/refunds/request">Hacelo acá</a> con tu email y este número (sujeto a la política del evento).</p>`;
     }
     await this.notify({
@@ -102,6 +104,20 @@ export class NotificationService {
         <p>Estas son tus entradas (presentá el QR en el evento):</p>
         <ul>${qrList}</ul>${guestBlock}`,
       metadata: { paymentId: payload.paymentId, ticketIds: payload.ticketIds },
+    });
+  }
+
+  @OnEvent(DomainEvents.TICKET_LINK_REQUESTED)
+  async onTicketLinkRequested(payload: TicketLinkRequestedPayload) {
+    await this.notify({
+      recipientEmail: payload.email,
+      channel: 'TICKET_LINK',
+      subject: '🎟️ Tus entradas de Clickpass',
+      html: `<h2>Acá están tus entradas</h2>
+        <p>Pediste ver las entradas asociadas a este email (${payload.ticketCount}). Abrí este link para verlas con su QR:</p>
+        <p><a href="${payload.viewUrl}" style="display:inline-block;padding:12px 20px;background:#10E89C;color:#0b0b14;border-radius:10px;text-decoration:none;font-weight:bold;">Ver mis entradas</a></p>
+        <p>El link vence en 30 minutos. Si no lo pediste, ignorá este email.</p>`,
+      metadata: { ticketCount: payload.ticketCount },
     });
   }
 

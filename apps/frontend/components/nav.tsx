@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { Ticket } from 'lucide-react';
 import { Logo } from './logo';
 import { useAuth } from '../lib/store';
 
@@ -45,14 +46,21 @@ export function Nav() {
         <div className="flex items-center gap-3">
           {mounted && user ? (
             <>
-              <Link
-                href={user.role === 'ORGANIZER' || user.role === 'ADMIN'
-                  ? '/dashboard/organizer'
-                  : '/dashboard/user'}
-                className="hidden text-sm font-medium text-muted hover:text-lime transition-colors sm:inline"
-              >
-                Hola, {user.firstName}
-              </Link>
+              {user.role === 'ORGANIZER' || user.role === 'ADMIN' ? (
+                <Link
+                  href="/dashboard/organizer"
+                  className="hidden text-sm font-medium text-muted hover:text-lime transition-colors sm:inline"
+                >
+                  Hola, {user.firstName}
+                </Link>
+              ) : (
+                <Link
+                  href="/dashboard/user"
+                  className="hidden items-center gap-1.5 text-sm font-medium text-muted hover:text-lime transition-colors sm:inline-flex"
+                >
+                  <Ticket size={15} /> Mis entradas
+                </Link>
+              )}
               <button
                 onClick={logout}
                 className="btn-outline text-sm !px-4 !py-1.5"
@@ -94,6 +102,16 @@ export function Nav() {
       {menuOpen && (
         <div className="border-t border-line px-4 py-4 md:hidden">
           <nav className="flex flex-col gap-4">
+            {mounted && user && (
+              <Link
+                href={user.role === 'ORGANIZER' || user.role === 'ADMIN' ? '/dashboard/organizer' : '/dashboard/user'}
+                className="flex items-center gap-1.5 font-medium text-lime"
+                onClick={() => setMenuOpen(false)}
+              >
+                <Ticket size={16} />{' '}
+                {user.role === 'ORGANIZER' || user.role === 'ADMIN' ? 'Mi panel' : 'Mis entradas'}
+              </Link>
+            )}
             <Link href="/events/search" className="text-muted hover:text-lime" onClick={() => setMenuOpen(false)}>
               Explorar
             </Link>

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Beer } from 'lucide-react';
 import type { EventItem, Product } from '../lib/types';
 import { api } from '../lib/api';
@@ -11,9 +12,16 @@ import { formatMoney, formatDate } from '../lib/format';
 
 type Stage = 'select' | 'pay' | 'done';
 
+interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: { id: string; email: string; firstName: string; lastName: string; role: 'ADMIN' | 'ORGANIZER' | 'USER' };
+}
+
 export function BuyBox({ event, products = [] }: { event: EventItem; products?: Product[] }) {
   const router = useRouter();
   const user = useAuth((s) => s.user);
+  const setSession = useAuth((s) => s.setSession);
   const activeDates = event.dates.filter((d) => d.status !== 'CANCELLED');
   const [dateId, setDateId] = useState(activeDates[0]?.id ?? '');
   const [qty, setQty] = useState(1);
@@ -24,6 +32,10 @@ export function BuyBox({ event, products = [] }: { event: EventItem; products?: 
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  // Cuenta opcional tras comprar como invitado (adopta esta compra por email).
+  const [accountPassword, setAccountPassword] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<{
     paymentId: string;
     initPoint: string;
@@ -107,6 +119,34 @@ export function BuyBox({ event, products = [] }: { event: EventItem; products?: 
     }
   }
 
+  // Crea una cuenta liviana con el email de la compra; el backend adopta esta compra.
+  async function createAccount() {
+    if (accountPassword.length < 8) {
+      setAccountError('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const parts = guestName.trim().split(/\s+/);
+      const res = await api<AuthResponse>('/auth/register-buyer', {
+        method: 'POST',
+        body: {
+          email: guestEmail.trim(),
+          password: accountPassword,
+          firstName: parts[0] || guestEmail.trim(),
+          lastName: parts.slice(1).join(' ') || undefined,
+          phone: guestPhone.trim() || undefined,
+        },
+      });
+      setSession(res);
+      router.push('/dashboard/user');
+    } catch (err) {
+      setAccountError(err instanceof Error ? err.message : 'No se pudo crear la cuenta');
+      setAccountBusy(false);
+    }
+  }
+
   return (
     <aside className="glass sticky top-28 p-6">
       {stage === 'done' ? (
@@ -125,10 +165,40 @@ export function BuyBox({ event, products = [] }: { event: EventItem; products?: 
               ? 'Te enviamos el QR por email. También está en tus entradas.'
               : `Te enviamos las entradas con el QR a ${guestEmail}. Guardá ese email, es tu comprobante.`}
           </p>
-          {user && (
+          {user ? (
             <button onClick={() => router.push('/dashboard/user')} className="btn-neon mt-6 w-full text-base">
               Ver mis entradas
             </button>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-emerald/30 bg-emerald/5 p-4 text-left">
+              <p className="text-sm font-medium text-fg">Guardá tus entradas en tu cuenta</p>
+              <p className="mt-1 text-xs text-muted">
+                Elegí una contraseña y accedé a esta compra (y futuras) cuando quieras, sin depender del email.
+              </p>
+              <input
+                type="password"
+                placeholder="Contraseña (mín. 8)"
+                value={accountPassword}
+                minLength={8}
+                onChange={(e) => setAccountPassword(e.target.value)}
+                className="field mt-3"
+              />
+              {accountError && <ErrorBox msg={accountError} />}
+              <button
+                onClick={createAccount}
+                disabled={accountBusy}
+                className="btn-neon mt-3 w-full text-base disabled:opacity-50"
+              >
+                {accountBusy ? 'Creando…' : 'Crear mi cuenta'}
+              </button>
+              <p className="mt-3 text-center text-xs text-muted">
+                ¿Preferís no registrarte? Podés{' '}
+                <Link href="/tickets/lookup" className="font-medium text-lime hover:underline">
+                  ver tus entradas por email
+                </Link>{' '}
+                cuando quieras.
+              </p>
+            </div>
           )}
         </div>
       ) : stage === 'pay' && checkout ? (

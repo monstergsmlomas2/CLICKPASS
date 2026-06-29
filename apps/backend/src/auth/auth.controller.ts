@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { RegisterBuyerDto } from './dto/register-buyer.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -23,6 +24,16 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
+  }
+
+  /**
+   * Registro liviano del comprador (cuenta opcional post-compra): adopta las compras
+   * que hizo como invitado con ese email. No exige apellido ni teléfono.
+   */
+  @Post('register-buyer')
+  @HttpCode(HttpStatus.CREATED)
+  registerBuyer(@Body() dto: RegisterBuyerDto) {
+    return this.auth.registerBuyer(dto);
   }
 
   @Post('login')
