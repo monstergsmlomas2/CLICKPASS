@@ -15,6 +15,13 @@ function qrboxSize(viewfinderWidth: number, viewfinderHeight: number) {
   return { width: size, height: size };
 }
 
+/** Fuerza enfoque continuo (no fijo) en celulares que lo soportan, para que la
+ * cámara reenfoque sola al acercar el QR en vez de quedarse en foco infinito. */
+const FOCUS_VIDEO_CONSTRAINTS = {
+  focusMode: 'continuous',
+  advanced: [{ focusMode: 'continuous' }],
+} as unknown as MediaTrackConstraints;
+
 /** Elige la cámara trasera por nombre cuando hay varias; si no se puede listar
  * (permiso no otorgado todavía), se delega en facingMode "environment". */
 async function pickBackCameraId(Html5Qrcode: typeof import('html5-qrcode').Html5Qrcode): Promise<string | null> {
@@ -102,11 +109,19 @@ export default function OrganizerScanPage() {
       try {
         await instance.start(
           backCameraId ?? { facingMode: 'environment' },
-          { fps: 10, qrbox: qrboxSize, aspectRatio: 1 },
+          { fps: 10, qrbox: qrboxSize, aspectRatio: 1, videoConstraints: FOCUS_VIDEO_CONSTRAINTS },
           (decodedText) => handleDecoded(decodedText),
           () => {},
         );
         setScanning(true);
+        try {
+          const caps = instance.getRunningTrackCapabilities() as MediaTrackCapabilities & { focusMode?: string[] };
+          if (caps.focusMode?.includes('continuous')) {
+            await instance.applyVideoConstraints(FOCUS_VIDEO_CONSTRAINTS);
+          }
+        } catch {
+          // El dispositivo no expone control de foco manual: seguimos con el enfoque por defecto.
+        }
       } catch {
         setCameraError('No se pudo acceder a la cámara. Revisá los permisos del navegador.');
       }
